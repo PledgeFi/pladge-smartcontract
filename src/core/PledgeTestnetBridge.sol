@@ -98,8 +98,7 @@ contract PledgeTestnetBridge is Ownable, ReentrancyGuard, EIP712 {
         uint256 deadline
     ) external view returns (bytes32) {
         bytes32 key = routeKey(tokenSymbol);
-        bytes32 structHash =
-            keccak256(abi.encode(BRIDGE_TYPEHASH, user, sourceChainId, key, amount, nonce_, deadline));
+        bytes32 structHash = keccak256(abi.encode(BRIDGE_TYPEHASH, user, sourceChainId, key, amount, nonce_, deadline));
         return _hashTypedDataV4(structHash);
     }
 
