@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  foundry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Build
+        run: make build
+
+      - name: Test
+        run: make test
+
+      - name: Format check
+        run: make fmt-check
+
+      - name: Verify deployment manifests
+        run: make verify-deployments

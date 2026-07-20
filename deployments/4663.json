@@ -1,0 +1,83 @@
+{
+  "protocol": "Pledge Finance",
+  "version": "1.0.0-mainnet",
+  "chainId": 4663,
+  "network": "Robinhood Mainnet",
+  "rpcUrl": "https://rpc.mainnet.chain.robinhood.com",
+  "explorer": "https://robinhoodchain.blockscout.com",
+  "nativeCurrency": {
+    "name": "Ether",
+    "symbol": "ETH",
+    "decimals": 18
+  },
+  "usdgDecimals": 6,
+  "features": {
+    "faucet": false,
+    "mockTokens": false
+  },
+  "contracts": {
+    "PledgeFinanceUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "PledgeVaultManager": "0x0000000000000000000000000000000000000000",
+    "PledgeStabilityPool": "0x0000000000000000000000000000000000000000",
+    "PledgeSurplusBuffer": "0x0000000000000000000000000000000000000000",
+    "PledgeOracle": "0x0000000000000000000000000000000000000000"
+  },
+  "markets": {
+    "NVDA": {
+      "name": "NVIDIA",
+      "collateral": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+      "maxLtvBps": 6000,
+      "liqRatioBps": 16600,
+      "status": "live"
+    },
+    "SPY": {
+      "name": "SPDR S&P 500 ETF",
+      "collateral": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+      "maxLtvBps": 7500,
+      "liqRatioBps": 13300,
+      "status": "live"
+    },
+    "AAPL": {
+      "name": "Apple",
+      "collateral": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+      "maxLtvBps": 6500,
+      "liqRatioBps": 15300,
+      "status": "live"
+    },
+    "QQQ": {
+      "name": "Invesco QQQ",
+      "collateral": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+      "maxLtvBps": 7000,
+      "liqRatioBps": 14300,
+      "status": "live"
+    },
+    "MSFT": {
+      "name": "Microsoft",
+      "collateral": "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
+      "maxLtvBps": 6500,
+      "liqRatioBps": 15300,
+      "status": "live"
+    },
+    "AMZN": {
+      "name": "Amazon",
+      "collateral": "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
+      "maxLtvBps": 5800,
+      "liqRatioBps": 17200,
+      "status": "live"
+    },
+    "META": {
+      "name": "Meta",
+      "collateral": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
+      "maxLtvBps": 6200,
+      "liqRatioBps": 16100,
+      "status": "live"
+    },
+    "GOOGL": {
+      "name": "Alphabet",
+      "collateral": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
+      "maxLtvBps": 6000,
+      "liqRatioBps": 16600,
+      "status": "live"
+    }
+  }
+}
