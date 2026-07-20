@@ -1,0 +1,102 @@
+{
+  "protocol": "Pledge Finance",
+  "version": "1.0.0-testnet",
+  "chainId": 46630,
+  "network": "Robinhood Chain Testnet",
+  "rpcUrl": "https://rpc.testnet.chain.robinhood.com",
+  "explorer": "https://explorer.testnet.chain.robinhood.com",
+  "usdgDecimals": 18,
+  "features": { "faucet": true, "mockTokens": true, "staking": true, "bridge": true },
+  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
+  "deployedAt": "2026-07-17",
+  "chainlink": {
+    "type": "mock-feeds",
+    "note": "Testnet uses MockChainlinkFeed; UI reads latestRoundData directly. Vault uses synced PledgeOracle."
+  },
+  "contracts": {
+    "PledgeFinanceUSDG": "0xF10AA239c709025238F2181812330Ba706ecA9E7",
+    "PledgeFinanceMNVDA": "0x635d4c04cAB57B5a1f5753862c8E2A4f3d1C7c5f",
+    "PledgeFinanceMSPY": "0x729d77494d287e0F60d4a3d0DAfc0bFa884bA250",
+    "PledgeFinanceMAAPL": "0x6FC38E8038278B8991466629c8a849112bb43ACe",
+    "PledgeFinanceMQQQ": "0xf486F332A162CC4bb844506254a649C300D64e9b",
+    "PledgeFinanceMMSFT": "0x8F59FE3b42bEb9b0578870ebf354C66A830edd13",
+    "PledgeFinanceMAMZN": "0x824f4060B0E368c87F75ce27b4E8816BEfE140E8",
+    "PledgeFinanceMMETA": "0x604024d1E16120679AccBBdb664Ede3D0A0A90EE",
+    "PledgeOracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+    "PledgeSurplusBuffer": "0x65A5979a947dE7dBbdeA42E1B168E2F2479fb5C8",
+    "PledgeVaultManager": "0x73a805Ffdefe8cC514238f68BC9400a884945bCa",
+    "PledgeStabilityPool": "0xE65c5A7075447Bf9fCf8678717a2671Bf951B0B4",
+    "PledgeFinancePLG": "0x046320362ff989E11DA762B5125d3099fd27075E",
+    "PledgeStaking": "0xd90F9Feb90b13C126F09bB833C52e24f01751d47",
+    "PledgeTestnetBridge": "0xAca71591e70642594Bc645d13A9FEE891C450ac7"
+  },
+  "markets": {
+    "mNVDA": {
+      "name": "Pledge Finance mNVDA",
+      "collateral": "0x635d4c04cAB57B5a1f5753862c8E2A4f3d1C7c5f",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0xFd4c378bfc9566fFa4d2005c4eA108Ec0A05682f",
+      "maxLtvBps": 6000,
+      "liqRatioBps": 16600,
+      "status": "live"
+    },
+    "mSPY": {
+      "name": "Pledge Finance mSPY",
+      "collateral": "0x729d77494d287e0F60d4a3d0DAfc0bFa884bA250",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0x9fF9D1B31EEAa93E8C3aA423B4fcf60FCF8739e6",
+      "maxLtvBps": 7500,
+      "liqRatioBps": 13300,
+      "status": "live"
+    },
+    "mAAPL": {
+      "name": "Pledge Finance mAAPL",
+      "collateral": "0x6FC38E8038278B8991466629c8a849112bb43ACe",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0x9b5d5decE85ff5d92f391067a93b09081623a0fe",
+      "maxLtvBps": 6500,
+      "liqRatioBps": 15300,
+      "status": "live"
+    },
+    "mQQQ": {
+      "name": "Pledge Finance mQQQ",
+      "collateral": "0xf486F332A162CC4bb844506254a649C300D64e9b",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0xA73198e50C2cEfbA1fC49Cd437a8eB2A736d8aC4",
+      "maxLtvBps": 7000,
+      "liqRatioBps": 14300,
+      "status": "live"
+    },
+    "mMSFT": {
+      "name": "Pledge Finance mMSFT",
+      "collateral": "0x8F59FE3b42bEb9b0578870ebf354C66A830edd13",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0x4dFC4e7cFf63ce9973f813031625CB89DbA67be5",
+      "maxLtvBps": 6500,
+      "liqRatioBps": 15300,
+      "status": "live"
+    },
+    "mAMZN": {
+      "name": "Pledge Finance mAMZN",
+      "collateral": "0x824f4060B0E368c87F75ce27b4E8816BEfE140E8",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0x1757a7BD9078001adD29d98Ba712DA7ba154C1AE",
+      "maxLtvBps": 5800,
+      "liqRatioBps": 17200,
+      "status": "live"
+    },
+    "mMETA": {
+      "name": "Pledge Finance mMETA",
+      "collateral": "0x604024d1E16120679AccBBdb664Ede3D0A0A90EE",
+      "oracle": "0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf",
+      "chainlinkFeed": "0x72Ec1C0edaBFCFE2D9dCAf34bf72F6e29FDdCc48",
+      "maxLtvBps": 6200,
+      "liqRatioBps": 16100,
+      "status": "live"
+    },
+    "mGOOGL": {
+      "name": "Pledge Finance mGOOGL",
+      "status": "pending"
+    }
+  }
+}
