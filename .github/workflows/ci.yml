@@ -4,31 +4,256 @@ on:
   push:
     branches: [main, master]
   pull_request:
+    types: [closed]
+  workflow_dispatch:
 
 jobs:
-  foundry:
+  notify:
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
+      - name: Send update to Telegram topic
+        env:
+          NOTIFY_TOKEN_PRIMARY: ${{ secrets.TELEGRAM_NOTIFY_BOT_TOKEN }}
+          NOTIFY_TOKEN_FALLBACK: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || vars.TELEGRAM_CHAT_ID }}
+          TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID || vars.TELEGRAM_TOPIC_ID }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          ACTOR: ${{ github.actor }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          RUN_NUMBER: ${{ github.run_number }}
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_URL: ${{ github.event.head_commit.url }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          COMMIT_EMAIL: ${{ github.event.head_commit.author.email }}
+          COMMIT_TIME: ${{ github.event.head_commit.timestamp }}
+          COMPARE_URL: ${{ github.event.compare }}
+          PUSHER: ${{ github.event.pusher.name }}
+          COMMITS_JSON: ${{ toJson(github.event.commits) }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_USER: ${{ github.event.pull_request.user.login }}
+          PR_ADDITIONS: ${{ github.event.pull_request.additions }}
+          PR_DELETIONS: ${{ github.event.pull_request.deletions }}
+          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
+          PR_MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          PR_BASE: ${{ github.event.pull_request.base.ref }}
+          PR_HEAD: ${{ github.event.pull_request.head.ref }}
+        run: |
+          export NOTIFY_BOT_TOKEN="${NOTIFY_TOKEN_PRIMARY:-$NOTIFY_TOKEN_FALLBACK}"
+          missing=""
+          [ -z "$NOTIFY_BOT_TOKEN" ] && missing="${missing} TELEGRAM_NOTIFY_BOT_TOKEN (or TELEGRAM_BOT_TOKEN)"
+          [ -z "$CHAT_ID" ] && missing="${missing} TELEGRAM_CHAT_ID"
+          [ -z "$TOPIC_ID" ] && missing="${missing} TELEGRAM_TOPIC_ID"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository Secrets (not Variables):${missing}"
+            echo "Add them at: Settings → Secrets and variables → Actions → Repository secrets"
+            echo "Names must match exactly (case-sensitive)."
+            exit 1
+          fi
+          echo "Secrets OK (bot token, chat id, topic id present)."
 
-      - name: Install Foundry
-        uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: stable
+          python3 <<'PY'
+          import html
+          import json
+          import os
+          import sys
+          import urllib.error
+          import urllib.request
 
-      - name: Install dependencies
-        run: make install
+          def esc(v):
+              return html.escape(str(v or ""), quote=True)
 
-      - name: Build
-        run: make build
+          def trunc(text, n):
+              text = (text or "").strip()
+              return text if len(text) <= n else text[: n - 1] + "…"
 
-      - name: Test
-        run: make test
+          TOKEN = os.environ["NOTIFY_BOT_TOKEN"]
+          CHAT_ID = os.environ["CHAT_ID"]
+          TOPIC_ID = int(os.environ["TOPIC_ID"])
+          API = f"https://api.telegram.org/bot{TOKEN}"
 
-      - name: Format check
-        run: make fmt-check
+          event = os.environ.get("EVENT_NAME", "push")
+          repo = esc(os.environ.get("REPO", ""))
+          branch = esc(os.environ.get("BRANCH", ""))
+          actor = esc(os.environ.get("ACTOR", ""))
+          run_url = os.environ.get("RUN_URL", "")
+          run_no = esc(os.environ.get("RUN_NUMBER", ""))
+          sha = os.environ.get("COMMIT_SHA", "")
+          repo_url = f"https://github.com/{os.environ.get('REPO', '')}"
 
-      - name: Verify deployment manifests
-        run: make verify-deployments
+          def call(method, payload):
+              req = urllib.request.Request(
+                  f"{API}/{method}",
+                  data=json.dumps(payload).encode("utf-8"),
+                  headers={"Content-Type": "application/json"},
+                  method="POST",
+              )
+              try:
+                  with urllib.request.urlopen(req) as resp:
+                      result = json.loads(resp.read().decode("utf-8"))
+              except urllib.error.HTTPError as e:
+                  body = e.read().decode("utf-8", errors="replace")
+                  print(f"Telegram API HTTP {e.code}: {body}", file=sys.stderr)
+                  raise
+              if not result.get("ok"):
+                  print(f"Telegram API error: {result}", file=sys.stderr)
+                  raise RuntimeError(result)
+              return result
+
+          def button_row(items):
+              row = [{"text": label, "url": url} for label, url in items if url]
+              return row if row else None
+
+          def header(title):
+              bar = "─" * max(4, 28 - len(title))
+              return f"╭─ <b>{title}</b> {bar}╮"
+
+          def footer():
+              return "╰──────────────────────────────╯"
+
+          def field(label, value, last=False):
+              prefix = "└" if last else "├"
+              return f"{prefix} <b>{label}</b>  {value}"
+
+          def section(title):
+              return f"\n▸ <b>{title}</b>"
+
+          def tree_item(text, last=False):
+              prefix = "└" if last else "├"
+              return f"{prefix} {text}"
+
+          buttons = []
+
+          if event == "pull_request":
+              title = "Pull Request Merged"
+              pr_no = esc(os.environ.get("PR_NUMBER", "?"))
+              pr_title = esc(os.environ.get("PR_TITLE", ""))
+              pr_user = esc(os.environ.get("PR_USER", ""))
+              pr_body = esc(trunc(os.environ.get("PR_BODY", ""), 400))
+              pr_base = esc(os.environ.get("PR_BASE", branch))
+              pr_head = esc(os.environ.get("PR_HEAD", ""))
+              additions = os.environ.get("PR_ADDITIONS", "0")
+              deletions = os.environ.get("PR_DELETIONS", "0")
+              changed = os.environ.get("PR_CHANGED_FILES", "0")
+              merged_at = esc(os.environ.get("PR_MERGED_AT", ""))
+              pr_url_raw = os.environ.get("PR_URL") or run_url
+              merge_url = f"{repo_url}/commit/{sha}"
+              body = (
+                  field("Repo", repo) + "\n"
+                  + field("Branch", f"<code>{pr_base}</code> ← <code>{pr_head}</code>") + "\n"
+                  + field("PR", f"#{pr_no}") + "\n"
+                  + field("Title", pr_title) + "\n"
+                  + field("Author", f"@{pr_user}") + "\n"
+                  + field("Merged", f"{actor} · {merged_at}") + "\n"
+                  + field("Files", f"{changed} · <code>+{additions}</code> <code>-{deletions}</code>", last=True)
+              )
+              if pr_body:
+                  body += section("Description") + f"\n<pre>{pr_body}</pre>"
+              row = button_row([
+                  ("View PR", pr_url_raw),
+                  (f"Action #{run_no}", run_url),
+                  ("Commit", merge_url),
+              ])
+              if row:
+                  buttons.append(row)
+          else:
+              label = "Manual test" if event == "workflow_dispatch" else "Push"
+              title = f"Repository Updated ({label})"
+              short_sha = sha[:7]
+              commit_url_raw = os.environ.get("COMMIT_URL") or f"{repo_url}/commit/{sha}"
+              commit_msg = esc(trunc(os.environ.get("COMMIT_MSG", "No message"), 600))
+              author = esc(os.environ.get("COMMIT_AUTHOR") or actor)
+              email = esc(os.environ.get("COMMIT_EMAIL", ""))
+              commit_time = esc(os.environ.get("COMMIT_TIME", ""))
+              pusher = esc(os.environ.get("PUSHER") or actor)
+              compare_url = os.environ.get("COMPARE_URL", "")
+
+              commits = json.loads(os.environ.get("COMMITS_JSON") or "[]")
+              added, modified, removed = set(), set(), set()
+              commit_lines = []
+              for i, c in enumerate(commits[:8]):
+                  cid = (c.get("id") or "")[:7]
+                  msg = esc(trunc((c.get("message") or "").splitlines()[0], 70))
+                  curl = esc(c.get("url") or "")
+                  cauthor = esc((c.get("author") or {}).get("name") or "")
+                  is_last = i == min(len(commits), 8) - 1 and len(commits) <= 8
+                  if curl:
+                      line = f"<a href=\"{curl}\"><code>{esc(cid)}</code></a>  {msg}  <i>{cauthor}</i>"
+                  else:
+                      line = f"<code>{esc(cid)}</code>  {msg}  <i>{cauthor}</i>"
+                  commit_lines.append(tree_item(line, last=is_last))
+                  added.update(c.get("added") or [])
+                  modified.update(c.get("modified") or [])
+                  removed.update(c.get("removed") or [])
+              modified -= added | removed
+              removed -= added
+
+              author_line = f"{author}" + (f" &lt;{email}&gt;" if email else "")
+              body = (
+                  field("Repo", repo) + "\n"
+                  + field("Branch", f"<code>{branch}</code>") + "\n"
+                  + field("Pushed", pusher) + "\n"
+                  + field("Time", commit_time) + "\n"
+                  + field("Commit", f"<code>{esc(short_sha)}</code>") + "\n"
+                  + field("Author", author_line, last=True)
+                  + section("Message")
+                  + f"\n<pre>{commit_msg}</pre>"
+              )
+              if commit_lines:
+                  body += section(f"Commits ({len(commits)})") + "\n" + "\n".join(commit_lines)
+                  if len(commits) > 8:
+                      body += f"\n└ … +{len(commits) - 8} more"
+
+              total_files = len(added) + len(modified) + len(removed)
+              if total_files:
+                  file_lines = []
+                  all_paths = [(p, "+") for p in sorted(added)]
+                  all_paths += [(p, "~") for p in sorted(modified)]
+                  all_paths += [(p, "-") for p in sorted(removed)]
+                  body += section(f"Files ({total_files})") + f"  <code>+{len(added)}</code> <code>~{len(modified)}</code> <code>-{len(removed)}</code>\n"
+                  shown_paths = all_paths[:15]
+                  for i, (path, mark) in enumerate(shown_paths):
+                      file_lines.append(tree_item(f"<code>{mark} {esc(path)}</code>", last=i == len(shown_paths) - 1 and total_files <= 15))
+                  body += "\n".join(file_lines)
+                  if total_files > 15:
+                      body += f"\n└ … +{total_files - 15} more"
+
+              row = button_row([
+                  ("Compare", compare_url),
+                  (f"Action #{run_no}", run_url),
+                  ("Commit", commit_url_raw),
+              ])
+              if row:
+                  buttons.append(row)
+
+          text = header(title) + "\n" + body + "\n" + footer()
+          if len(text) > 4000:
+              text = text[:3990] + "…"
+
+          me = call("getMe", {})
+          print(f"Notify bot: @{me['result'].get('username', '?')}")
+
+          payload = {
+              "chat_id": CHAT_ID,
+              "message_thread_id": TOPIC_ID,
+              "parse_mode": "HTML",
+              "text": text,
+              "disable_web_page_preview": True,
+          }
+          if buttons:
+              payload["reply_markup"] = {"inline_keyboard": buttons}
+          try:
+              result = call("sendMessage", payload)
+          except Exception as err:
+              print(f"Topic send failed: {err}", file=sys.stderr)
+              payload.pop("message_thread_id", None)
+              result = call("sendMessage", payload)
+
+          print(f"Sent. message_id={result['result']['message_id']}")
+          PY
