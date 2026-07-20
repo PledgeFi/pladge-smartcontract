@@ -96,10 +96,11 @@ contract PledgeVaultManagerTest is Test {
         vault.borrow(address(mNvda), 3000e18);
         vm.stopPrank();
 
-        oracle.setPrice(address(mNvda), 280e18);
-
         // Warp past the cooldown period (48 hours) to mint for bob
         vm.warp(block.timestamp + 48 hours + 1);
+
+        // Set the price AFTER warping to ensure it's not stale
+        oracle.setPrice(address(mNvda), 280e18);
 
         usdg.mint(bob, 5000e18);
         vm.startPrank(bob);
