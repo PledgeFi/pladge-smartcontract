@@ -7,6 +7,8 @@ import {PledgeVaultManager} from "../src/core/PledgeVaultManager.sol";
 import {PledgeSurplusBuffer} from "../src/core/PledgeSurplusBuffer.sol";
 import {PledgeStabilityPool} from "../src/core/PledgeStabilityPool.sol";
 import {PledgeChainlinkOracle} from "../src/oracle/PledgeChainlinkOracle.sol";
+import {OracleProxyDeploy} from "./OracleProxyDeploy.sol";
+import {ProxyDeploy} from "./ProxyDeploy.sol";
 import {MockChainlinkFeed} from "../src/mocks/MockChainlinkFeed.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 
@@ -26,14 +28,14 @@ contract DeployPledge is Script {
 
         MockERC20 usdg = new MockERC20(PledgeProtocol.USDG_NAME, PledgeProtocol.USDG_SYMBOL, 18);
         MockERC20 mNvda = new MockERC20("Pledge Finance mNVDA", "mNVDA", 18);
-        PledgeChainlinkOracle oracle = new PledgeChainlinkOracle(deployer);
+        (PledgeChainlinkOracle oracle,) = OracleProxyDeploy.deploy(deployer);
         oracle.setMaxStaleness(4 days);
         MockChainlinkFeed nvdaFeed =
             new MockChainlinkFeed("mNVDA / USD", 509_00000000, deployer);
         oracle.setFeed(address(mNvda), address(nvdaFeed));
-        PledgeSurplusBuffer surplus = new PledgeSurplusBuffer(address(usdg), deployer);
-        PledgeVaultManager vault = new PledgeVaultManager(address(usdg), address(surplus), deployer);
-        PledgeStabilityPool stabilityPool = new PledgeStabilityPool(address(usdg), deployer);
+        (PledgeSurplusBuffer surplus,) = ProxyDeploy.surplus(address(usdg), deployer);
+        (PledgeVaultManager vault,) = ProxyDeploy.vault(address(usdg), address(surplus), deployer);
+        (PledgeStabilityPool stabilityPool,) = ProxyDeploy.pool(address(usdg), deployer);
 
         stabilityPool.setVaultManager(address(vault));
 
@@ -51,11 +53,11 @@ contract DeployPledge is Script {
 
         console2.log("PledgeFinanceUSDG", address(usdg));
         console2.log("PledgeFinanceMNVDA", address(mNvda));
-        console2.log("PledgeChainlinkOracle", address(oracle));
+        console2.log("PledgeChainlinkOracle proxy", address(oracle));
         console2.log("mNVDA ChainlinkFeed", address(nvdaFeed));
-        console2.log("PledgeSurplusBuffer", address(surplus));
-        console2.log("PledgeVaultManager", address(vault));
-        console2.log("PledgeStabilityPool", address(stabilityPool));
+        console2.log("PledgeSurplusBuffer proxy", address(surplus));
+        console2.log("PledgeVaultManager proxy", address(vault));
+        console2.log("PledgeStabilityPool proxy", address(stabilityPool));
     }
 
     function _deployerPrivateKey() private view returns (uint256) {

@@ -1,181 +1,138 @@
-# pladge-smartcontract
+# Pledge Finance — Smart Contracts
 
-Canonical **monolithic** Foundry repository for [Pledge Finance](https://github.com/pledge-finance) on Robinhood Chain. Contains the full oracle + protocol stack in one tree, byte-aligned with the live testnet deployment and mainnet manifest.
+Production-grade overcollateralized vault protocol on **Robinhood Chain**. Users deposit tokenized equities as collateral and borrow **USDG** (Paxos USDG on mainnet).
 
-This repo **coexists** with the audit-friendly split repos in the parent monorepo — see [Split-repo mapping](#split-repo-mapping).
+## Network
 
-## Contracts
-
-| Area | Contracts |
+| Property | Value |
 |---|---|
-| Oracle | `IOracle`, `PledgeOracle`, `PledgeChainlinkOracle` |
-| Core | `PledgeVaultManager`, `PledgeSurplusBuffer`, `PledgeStabilityPool`, `VaultMath` |
-| Testnet | `PledgeStaking`, `PledgeTestnetBridge`, `MockERC20`, `MockChainlinkFeed` |
+| Network | Robinhood Mainnet |
+| Chain ID | `4663` |
+| RPC | `https://rpc.mainnet.chain.robinhood.com` |
+| Explorer | [Blockscout](https://robinhoodchain.blockscout.com) |
+| Deployment manifest | [`deployments/4663.json`](./deployments/4663.json) |
 
-## Live deployments
+## Architecture
 
-| Network | Chain ID | Manifest | Explorer |
-|---|---|---|---|
-| Robinhood Testnet | 46630 | [`deployments/46630.json`](./deployments/46630.json) | [explorer.testnet.chain.robinhood.com](https://explorer.testnet.chain.robinhood.com) |
-| Robinhood Mainnet | 4663 | [`deployments/4663.json`](./deployments/4663.json) | [robinhoodchain.blockscout.com](https://robinhoodchain.blockscout.com) |
+| Contract | Role |
+|---|---|
+| `PledgeVaultManager` | CDP vault — deposit collateral, borrow USDG, repay, withdraw, liquidate |
+| `PledgeSurplusBuffer` | Protocol fee treasury (USDG) |
+| `PledgeStabilityPool` | USDG backstop for liquidations |
+| `PledgeChainlinkOracle` | Chainlink-backed price oracle (USD, 18 decimals) |
+| `VaultMath` | Health factor, collateral valuation, interest accrual |
 
-### Testnet core addresses (46630)
+Collateral assets are official Robinhood tokenized equities (NVDA, SPY, AAPL, QQQ, MSFT, AMZN, META, GOOGL). USDG is the external Paxos stablecoin — not minted by this protocol on mainnet.
+
+## Live deployments (mainnet)
+
+Canonical addresses are recorded in [`deployments/4663.json`](./deployments/4663.json). Key contracts:
 
 | Contract | Address |
 |---|---|
-| PledgeVaultManager | `0x73a805Ffdefe8cC514238f68BC9400a884945bCa` |
-| PledgeOracle | `0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf` |
-| PledgeStabilityPool | `0xE65c5A7075447Bf9fCf8678717a2671Bf951B0B4` |
-| PledgeSurplusBuffer | `0x65A5979a947dE7dBbdeA42E1B168E2F2479fb5C8` |
+| `PledgeVaultManager` | `0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62` |
+| `PledgeChainlinkOracle` | `0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9` |
+| `PledgeSurplusBuffer` | `0xEa30446c46D61514f19c897224E65b13Fb0A826c` |
+| `PledgeStabilityPool` | `0x8570a571CC83f87B3Ca4249B71646Cc807350e14` |
+| Paxos USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
 
-Full token, staking, and bridge addresses are in `deployments/46630.json` and [`.env.example`](./.env.example).
+> Treat on-chain state as authoritative. The manifest is a convenience reference for integrators.
 
-## Setup
+## Development setup
 
-Requires [Foundry](https://book.getfoundry.sh/getting-started/installation) (1.5+ recommended).
+**Requirements:** [Foundry](https://book.getfoundry.sh/getting-started/installation), Solidity 0.8.24, OpenZeppelin v5.
 
 ```bash
-make install
-cp .env.example .env
-# fill DEPLOYER_PRIVATE_KEY and RPC URLs
+forge install
+cp .env.example .env   # set DEPLOYER_PRIVATE_KEY and RPC endpoints
+make build
+make test
 ```
 
-Pinned dependencies:
-
-- `forge-std@v1.9.6`
-- `openzeppelin-contracts@v5.0.2`
-
-## Test
+## Testing
 
 ```bash
+forge test -vv
+# or
 make test
-make fmt-check
+```
+
+Unit tests cover vault lifecycle, oracle adapters, interest accrual, liquidation paths, and proxy initialization. Run the full suite before any mainnet script broadcast.
+
+## Mainnet operations
+
+All mainnet scripts target chain `4663` and use `ROBINHOOD_MAINNET_RPC` (or the `robinhood_mainnet` alias in `foundry.toml`).
+
+```bash
+# Register collateral markets on the live vault
+forge script script/RegisterMainnetMarkets.s.sol \
+  --rpc-url $ROBINHOOD_MAINNET_RPC \
+  --broadcast \
+  --chain-id 4663
+
+# Wire Chainlink feeds on the oracle proxy (owner only)
+forge script script/SetOracleFeeds.s.sol \
+  --rpc-url $ROBINHOOD_MAINNET_RPC \
+  --broadcast \
+  --chain-id 4663
+
+# Fund vault USDG liquidity
+forge script script/FundLiquidityMainnet.s.sol \
+  --rpc-url $ROBINHOOD_MAINNET_RPC \
+  --broadcast \
+  --chain-id 4663
+```
+
+Required environment variables are documented in [`.env.example`](./.env.example).
+
+Verify that `.env.example` matches the deployment manifest:
+
+```bash
 make verify-deployments
 ```
 
-### Known test failure (preserved for parity)
+## Risk parameters (mainnet)
 
-`test_liquidationAfterPriceDrop` fails in this repo and in the upstream `Stocks-Vault/contracts` source — the admin faucet cooldown on `MockERC20.mint` blocks the liquidation setup step. This is documented, not fixed, to keep bytecode parity with the canonical source.
-
-## Deploy
-
-All scripts read `DEPLOYER_PRIVATE_KEY` from `.env` via Foundry.
-
-### Testnet — fresh core deploy
-
-```bash
-forge script script/Deploy.s.sol:DeployPledge \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-```
-
-### Testnet — add markets
-
-```bash
-forge script script/AddMarkets.s.sol:AddMarkets \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-```
-
-### Testnet — mock Chainlink feeds + oracle sync
-
-```bash
-forge script script/SetupChainlinkTestnet.s.sol:SetupChainlinkTestnet \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-
-forge script script/SyncTestnetOracleFromFeeds.s.sol:SyncTestnetOracleFromFeeds \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-```
-
-### Testnet — staking, bridge, seed
-
-```bash
-forge script script/DeployStaking.s.sol:DeployStaking \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-
-forge script script/DeployBridge.s.sol:DeployBridge \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-
-forge script script/Seed.s.sol:SeedPledgeTestnet \
-  --rpc-url $ROBINHOOD_TESTNET_RPC \
-  --broadcast \
-  --chain-id 46630
-```
-
-### Mainnet
-
-```bash
-forge script script/DeployMainnet.s.sol:DeployPledgeMainnet \
-  --rpc-url $ROBINHOOD_MAINNET_RPC \
-  --broadcast \
-  --chain-id 4663
-
-forge script script/RegisterMainnetMarkets.s.sol:RegisterMainnetMarkets \
-  --rpc-url $ROBINHOOD_MAINNET_RPC \
-  --broadcast \
-  --chain-id 4663
-```
-
-After deploying, update `deployments/*.json` and `.env.example` with new addresses.
-
-## Market parameters (testnet)
-
-| Market | max LTV | liq ratio |
+| Market | Max LTV | Liquidation ratio |
 |---|---|---|
-| mNVDA | 6000 bps | 16600 bps |
-| mSPY | 7500 bps | 13300 bps |
-| mAAPL | 6500 bps | 15300 bps |
-| mQQQ | 7000 bps | 14300 bps |
-| mMSFT | 6500 bps | 15300 bps |
-| mAMZN | 5800 bps | 17200 bps |
-| mMETA | 6200 bps | 16100 bps |
+| NVDA | 60% | 166% |
+| AAPL / MSFT | 65% | 153% |
+| SPY | 75% | 133% |
+| QQQ | 70% | 143% |
+| AMZN | 58% | 172% |
+| META | 62% | 161% |
+| GOOGL | 60% | 166% |
 
-See `deployments/46630.json` → `markets` for collateral and feed addresses.
+Oracle staleness on mainnet is configured to **4 days** (`SetOracleFeeds.s.sol`). Review against Chainlink heartbeat per asset before changing.
 
-## Split-repo mapping
+## Security and audit
 
-Option **2b**: this monolith is the **canonical deploy + test** repo. Split repos exist for focused audit and modular integration.
+- Audit scope: [`AUDIT.md`](./AUDIT.md)
+- Mainnet script audit: [`MAINNET_SCRIPT_AUDIT.md`](./MAINNET_SCRIPT_AUDIT.md)
+- Vulnerability reporting: [`SECURITY.md`](./SECURITY.md)
 
-| Role | Repo |
+Mainnet integrations must use `PledgeChainlinkOracle` — never wire the legacy manual `PledgeOracle` used on testnet.
+
+Operators: read [`MAINNET_SCRIPT_AUDIT.md`](./MAINNET_SCRIPT_AUDIT.md) before broadcasting any mainnet script. Do not run deprecated/cutover scripts against the live vault.
+
+## Local development (Anvil)
+
+For isolated local testing without touching mainnet:
+
+```bash
+anvil &
+export DEPLOYER_PRIVATE_KEY=0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784681bf6f756
+forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
+```
+
+## Testnet (development only)
+
+Robinhood Testnet (chain `46630`) uses mock tokens, a manual oracle, and auxiliary contracts (`PledgeTestnetBridge`, `PledgeStaking`, mocks). These components are **not** deployed or supported on mainnet.
+
+| Property | Value |
 |---|---|
-| **pladge-smartcontract** (this repo) | Full monolith — deploy, full test suite, live deployment manifests |
-| [`pledge-oracle`](../pledge-oracle) | Audit-friendly oracle-only split |
-| [`pledge-protocol`](../pledge-protocol) | Audit-friendly protocol split (depends on oracle) |
-| [`pledge-sdk`](../pledge-sdk) / [`pledge-mcp`](../pledge-mcp) | Off-chain integration (unchanged) |
+| Chain ID | `46630` |
+| Manifest | [`deployments/46630.json`](./deployments/46630.json) |
+| Deploy script | `script/Deploy.s.sol` |
 
-### Path mapping (monolith → split)
-
-| Monolith path | pledge-oracle | pledge-protocol |
-|---|---|---|
-| `src/interfaces/IOracle.sol` | `src/interfaces/IOracle.sol` | via `lib/pledge-oracle` |
-| `src/oracle/PledgeOracle.sol` | `src/PledgeOracle.sol` | — |
-| `src/oracle/PledgeChainlinkOracle.sol` | `src/PledgeChainlinkOracle.sol` | — |
-| `src/mocks/MockChainlinkFeed.sol` | `src/testnet/MockChainlinkFeed.sol` | — |
-| `src/core/PledgeVaultManager.sol` | — | `src/core/PledgeVaultManager.sol` |
-| `src/core/PledgeSurplusBuffer.sol` | — | `src/core/PledgeSurplusBuffer.sol` |
-| `src/core/PledgeStabilityPool.sol` | — | `src/core/PledgeStabilityPool.sol` |
-| `src/core/PledgeStaking.sol` | — | `src/core/PledgeStaking.sol` |
-| `src/core/PledgeTestnetBridge.sol` | — | `src/core/PledgeTestnetBridge.sol` |
-| `src/libraries/VaultMath.sol` | — | `src/libraries/VaultMath.sol` |
-| `src/mocks/MockERC20.sol` | — | `src/mocks/MockERC20.sol` |
-| `src/PledgeProtocol.sol` | — | `src/PledgeProtocol.sol` |
-
-**Sync rule:** any Solidity change lands in `pladge-smartcontract` first, then is mirrored to split repos with import-path adjustments only.
-
-## Audit
-
-See [AUDIT.md](./AUDIT.md) for mainnet vs testnet scope. See [SECURITY.md](./SECURITY.md) for vulnerability reporting.
-
-## License
-
-MIT — see [LICENSE](./LICENSE).
+Use testnet exclusively for integration experiments. Production integrations must reference mainnet addresses in [`deployments/4663.json`](./deployments/4663.json).

@@ -5,76 +5,101 @@
   "network": "Robinhood Mainnet",
   "rpcUrl": "https://rpc.mainnet.chain.robinhood.com",
   "explorer": "https://robinhoodchain.blockscout.com",
-  "nativeCurrency": {
-    "name": "Ether",
-    "symbol": "ETH",
-    "decimals": 18
-  },
-  "usdgDecimals": 6,
-  "features": {
-    "faucet": false,
-    "mockTokens": false
+  "deployedAt": "2026-07-20",
+  "chainlink": {
+    "type": "chainlink-feeds",
+    "oracle": "PledgeChainlinkOracle",
+    "maxStalenessSeconds": 345600,
+    "note": "Vault markets use PledgeChainlinkOracle proxy. Prices are USD with 18 decimals."
   },
   "contracts": {
-    "PledgeFinanceUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
-    "PledgeVaultManager": "0x0000000000000000000000000000000000000000",
-    "PledgeStabilityPool": "0x0000000000000000000000000000000000000000",
-    "PledgeSurplusBuffer": "0x0000000000000000000000000000000000000000",
-    "PledgeOracle": "0x0000000000000000000000000000000000000000"
+    "PaxosUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+    "PledgeChainlinkOracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+    "PledgeSurplusBuffer": "0xEa30446c46D61514f19c897224E65b13Fb0A826c",
+    "PledgeVaultManager": "0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62",
+    "PledgeStabilityPool": "0x8570a571CC83f87B3Ca4249B71646Cc807350e14",
+    "RobinhoodNVDA": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+    "RobinhoodSPY": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+    "RobinhoodAAPL": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+    "RobinhoodQQQ": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+    "RobinhoodMSFT": "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
+    "RobinhoodAMZN": "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
+    "RobinhoodMETA": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
+    "RobinhoodGOOGL": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"
+  },
+  "deprecated": {
+    "PledgeVaultManager_v0": "0xf486F332A162CC4bb844506254a649C300D64e9b",
+    "note": "Superseded by UUPS proxy cutover. Markets paused; do not integrate."
   },
   "markets": {
     "NVDA": {
-      "name": "NVIDIA",
+      "name": "Robinhood NVDA",
       "collateral": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
       "maxLtvBps": 6000,
       "liqRatioBps": 16600,
       "status": "live"
     },
     "SPY": {
-      "name": "SPDR S&P 500 ETF",
+      "name": "Robinhood SPY",
       "collateral": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
       "maxLtvBps": 7500,
       "liqRatioBps": 13300,
       "status": "live"
     },
     "AAPL": {
-      "name": "Apple",
+      "name": "Robinhood AAPL",
       "collateral": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0",
       "maxLtvBps": 6500,
       "liqRatioBps": 15300,
       "status": "live"
     },
     "QQQ": {
-      "name": "Invesco QQQ",
+      "name": "Robinhood QQQ",
       "collateral": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae",
       "maxLtvBps": 7000,
       "liqRatioBps": 14300,
       "status": "live"
     },
     "MSFT": {
-      "name": "Microsoft",
+      "name": "Robinhood MSFT",
       "collateral": "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E",
       "maxLtvBps": 6500,
       "liqRatioBps": 15300,
       "status": "live"
     },
     "AMZN": {
-      "name": "Amazon",
+      "name": "Robinhood AMZN",
       "collateral": "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C",
       "maxLtvBps": 5800,
       "liqRatioBps": 17200,
       "status": "live"
     },
     "META": {
-      "name": "Meta",
+      "name": "Robinhood META",
       "collateral": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1",
       "maxLtvBps": 6200,
       "liqRatioBps": 16100,
       "status": "live"
     },
     "GOOGL": {
-      "name": "Alphabet",
+      "name": "Robinhood GOOGL",
       "collateral": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
+      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "chainlinkFeed": "0xF6f373a037c30F0e5010d854385cA89185AE638b",
       "maxLtvBps": 6000,
       "liqRatioBps": 16600,
       "status": "live"

@@ -4,6 +4,7 @@ pragma solidity ^0.8.24;
 import {Script, console2} from "forge-std/Script.sol";
 import {PledgeProtocol} from "../src/PledgeProtocol.sol";
 import {PledgeStaking} from "../src/core/PledgeStaking.sol";
+import {ProxyDeploy} from "./ProxyDeploy.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 
 /// @title DeployStaking
@@ -22,7 +23,7 @@ contract DeployStaking is Script {
         vm.startBroadcast(deployerKey);
 
         MockERC20 plg = new MockERC20("Pledge Finance PLG", "PLG", 18);
-        PledgeStaking staking = new PledgeStaking(deployer);
+        (PledgeStaking staking, address implementation) = ProxyDeploy.staking(deployer);
 
         // ~0.864 PLG/day total emission per pool at 1e16/sec
         uint256 plgPool = staking.addPool(address(plg), address(plg), 1e16, 7 days, true);
@@ -36,7 +37,8 @@ contract DeployStaking is Script {
         vm.stopBroadcast();
 
         console2.log("PledgeFinancePLG", address(plg));
-        console2.log("PledgeStaking", address(staking));
+        console2.log("Implementation", implementation);
+        console2.log("PledgeStaking proxy", address(staking));
         console2.log("PLG pool id", plgPool);
         console2.log("USDG pool id", usdgPool);
     }
