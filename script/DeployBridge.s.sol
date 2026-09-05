@@ -5,6 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PledgeProtocol} from "../src/PledgeProtocol.sol";
 import {PledgeTestnetBridge} from "../src/core/PledgeTestnetBridge.sol";
+import {ProxyDeploy} from "./ProxyDeploy.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 
 /// @title DeployBridge
@@ -18,7 +19,7 @@ contract DeployBridge is Script {
     uint256 internal constant USDG_MAX = 10_000e18;
     uint256 internal constant USDC_MIN = 25e18;
     uint256 internal constant USDC_MAX = 10_000e18;
-    uint256 internal constant EQUITY_MIN = 1e18;
+    uint256 internal constant EQUITY_MIN = 1;
     uint256 internal constant EQUITY_MAX = 1_000e18;
 
     uint256 internal constant FUND_USDG = 2_000_000e18;
@@ -35,7 +36,9 @@ contract DeployBridge is Script {
 
         vm.startBroadcast(deployerKey);
 
-        PledgeTestnetBridge bridge = new PledgeTestnetBridge(deployer);
+        (PledgeTestnetBridge bridge,) = ProxyDeploy.bridge(deployer);
+
+        bridge.setUsdgPayToken(usdg);
 
         _configureRoutes(bridge, usdg);
 
@@ -50,7 +53,7 @@ contract DeployBridge is Script {
 
         vm.stopBroadcast();
 
-        console2.log("PledgeTestnetBridge", address(bridge));
+        console2.log("PledgeTestnetBridge proxy", address(bridge));
     }
 
     function _configureRoutes(PledgeTestnetBridge bridge, address usdg) internal {

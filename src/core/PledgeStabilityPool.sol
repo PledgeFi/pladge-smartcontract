@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PledgeUupsOwnable} from "../upgrade/PledgeUupsOwnable.sol";
 
 /// @title PledgeStabilityPool
 /// @author Pledge Finance
-/// @notice Pledge Finance USDG pool for liquidation backstop (testnet).
-contract PledgeStabilityPool is Ownable, ReentrancyGuard {
+/// @notice Pledge Finance USDG pool for liquidation backstop.
+/// @dev Production: deploy behind ERC1967Proxy. Tests may pass owner in the constructor.
+contract PledgeStabilityPool is PledgeUupsOwnable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     IERC20 public immutable usdg;
@@ -30,8 +31,14 @@ contract PledgeStabilityPool is Ownable, ReentrancyGuard {
         _;
     }
 
-    constructor(address usdg_, address owner_) Ownable(owner_) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor(address usdg_, address owner_) {
         usdg = IERC20(usdg_);
+        _disableAndMaybeSetOwner(owner_);
+    }
+
+    function initialize(address owner_) external initializer {
+        _initOwner(owner_);
     }
 
     function setVaultManager(address vaultManager_) external onlyOwner {

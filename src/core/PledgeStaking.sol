@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {PledgeUupsOwnable} from "../upgrade/PledgeUupsOwnable.sol";
 
 /// @title PledgeStaking
 /// @notice Testnet staking pools with proportional reward emissions.
-contract PledgeStaking is Ownable, ReentrancyGuard {
+/// @dev Production: deploy behind ERC1967Proxy. Tests may pass owner in the constructor.
+contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
     uint256 public constant ACC_PRECISION = 1e18;
@@ -47,7 +48,14 @@ contract PledgeStaking is Ownable, ReentrancyGuard {
     error LockActive();
     error InvalidPool();
 
-    constructor(address owner_) Ownable(owner_) {}
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor(address owner_) {
+        _disableAndMaybeSetOwner(owner_);
+    }
+
+    function initialize(address owner_) external initializer {
+        _initOwner(owner_);
+    }
 
     function poolCount() external view returns (uint256) {
         return _pools.length;

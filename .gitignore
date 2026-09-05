@@ -2,5 +2,3 @@ cache/
 out/
 broadcast/
 .env
-lib/forge-std/
-lib/openzeppelin-contracts/

@@ -2,12 +2,9 @@
   "protocol": "Pledge Finance",
   "version": "1.0.0-testnet",
   "chainId": 46630,
-  "network": "Robinhood Chain Testnet",
+  "network": "Robinhood Testnet",
   "rpcUrl": "https://rpc.testnet.chain.robinhood.com",
   "explorer": "https://explorer.testnet.chain.robinhood.com",
-  "usdgDecimals": 18,
-  "features": { "faucet": true, "mockTokens": true, "staking": true, "bridge": true },
-  "nativeCurrency": { "name": "Ether", "symbol": "ETH", "decimals": 18 },
   "deployedAt": "2026-07-17",
   "chainlink": {
     "type": "mock-feeds",
@@ -26,9 +23,8 @@
     "PledgeSurplusBuffer": "0x65A5979a947dE7dBbdeA42E1B168E2F2479fb5C8",
     "PledgeVaultManager": "0x73a805Ffdefe8cC514238f68BC9400a884945bCa",
     "PledgeStabilityPool": "0xE65c5A7075447Bf9fCf8678717a2671Bf951B0B4",
-    "PledgeFinancePLG": "0x046320362ff989E11DA762B5125d3099fd27075E",
-    "PledgeStaking": "0xd90F9Feb90b13C126F09bB833C52e24f01751d47",
-    "PledgeTestnetBridge": "0xAca71591e70642594Bc645d13A9FEE891C450ac7"
+    "PledgeTestnetBridge": "0x4d01aef8a2f1c8663dba8d9aebfa56e5be0d9cd5",
+    "PledgeTestnetEthFaucet": "0x4FaEF9f379556d973e733B2345097A51071CF4b6"
   },
   "markets": {
     "mNVDA": {

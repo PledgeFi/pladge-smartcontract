@@ -6,7 +6,7 @@ import {PledgeProtocol} from "../src/PledgeProtocol.sol";
 import {PledgeVaultManager} from "../src/core/PledgeVaultManager.sol";
 import {PledgeSurplusBuffer} from "../src/core/PledgeSurplusBuffer.sol";
 import {PledgeStabilityPool} from "../src/core/PledgeStabilityPool.sol";
-import {PledgeChainlinkOracle} from "../src/oracle/PledgeChainlinkOracle.sol";
+import {ProxyDeploy} from "./ProxyDeploy.sol";
 
 /// @title DeployPledgeMainnet
 /// @notice Deploy Pledge Finance core to Robinhood Mainnet (chain 4663).
@@ -25,21 +25,22 @@ contract DeployPledgeMainnet is Script {
         console2.log("Deployer:", deployer);
         console2.log("USDG:", USDG);
 
+        address oracle = vm.envOr("MAINNET_ORACLE", address(0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9));
+
         vm.startBroadcast(deployerKey);
 
-        PledgeChainlinkOracle oracle = new PledgeChainlinkOracle(deployer);
-        PledgeSurplusBuffer surplus = new PledgeSurplusBuffer(USDG, deployer);
-        PledgeVaultManager vault = new PledgeVaultManager(USDG, address(surplus), deployer);
-        PledgeStabilityPool stabilityPool = new PledgeStabilityPool(USDG, deployer);
+        (PledgeSurplusBuffer surplus,) = ProxyDeploy.surplus(USDG, deployer);
+        (PledgeVaultManager vault,) = ProxyDeploy.vault(USDG, address(surplus), deployer);
+        (PledgeStabilityPool stabilityPool,) = ProxyDeploy.pool(USDG, deployer);
 
         stabilityPool.setVaultManager(address(vault));
 
         vm.stopBroadcast();
 
-        console2.log("PledgeChainlinkOracle", address(oracle));
-        console2.log("PledgeSurplusBuffer", address(surplus));
-        console2.log("PledgeVaultManager", address(vault));
-        console2.log("PledgeStabilityPool", address(stabilityPool));
+        console2.log("PledgeChainlinkOracle (existing)", oracle);
+        console2.log("PledgeSurplusBuffer proxy", address(surplus));
+        console2.log("PledgeVaultManager proxy", address(vault));
+        console2.log("PledgeStabilityPool proxy", address(stabilityPool));
         console2.log("Next: forge script script/RegisterMainnetMarkets.s.sol --rpc-url robinhood_mainnet --broadcast");
     }
 

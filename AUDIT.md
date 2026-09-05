@@ -1,14 +1,13 @@
 # Audit Scope — pladge-smartcontract v1.0.0
 
-Monolithic Foundry repo containing all Pledge Finance on-chain contracts. This document combines the audit scopes of the split [`pledge-oracle`](../pledge-oracle/AUDIT.md) and [`pledge-protocol`](../pledge-protocol/AUDIT.md) repositories.
+Monolithic Foundry repository containing all Pledge Finance on-chain contracts. Production deployments run on **Robinhood Mainnet (chain 4663)**; see [`deployments/4663.json`](./deployments/4663.json).
 
 ## In scope (mainnet)
 
 | File | Notes |
 |---|---|
 | `src/interfaces/IOracle.sol` | Shared price feed interface |
-| `src/oracle/PledgeOracle.sol` | Testnet manual oracle (must not be wired on mainnet vaults) |
-| `src/oracle/PledgeChainlinkOracle.sol` | Mainnet Chainlink adapter |
+| `src/oracle/PledgeChainlinkOracle.sol` | Production Chainlink adapter (UUPS proxy) |
 | `src/core/PledgeVaultManager.sol` | CDP lifecycle, LTV, liquidation, interest accrual |
 | `src/core/PledgeSurplusBuffer.sol` | Fee custody |
 | `src/core/PledgeStabilityPool.sol` | USDG backstop |
@@ -18,20 +17,22 @@ Monolithic Foundry repo containing all Pledge Finance on-chain contracts. This d
 
 | File | Reason |
 |---|---|
+| `src/oracle/PledgeOracle.sol` | Legacy manual oracle — testnet only; must not be wired on mainnet vaults |
 | `src/core/PledgeStaking.sol` | Testnet incentives |
 | `src/core/PledgeTestnetBridge.sol` | Testnet ingress only |
 | `src/mocks/MockERC20.sol` | Test token faucet |
 | `src/mocks/MockChainlinkFeed.sol` | Testnet infrastructure only |
+| `src/mocks/TestnetEthFaucet.sol` | Testnet gas faucet |
 | `script/*` | Deployment automation |
 | `test/*` | Test harness |
 
 ## Assumptions
 
 1. Oracle owner is a multisig or timelock-controlled admin on mainnet.
-2. `maxStaleness` is set conservatively (default 24h; mainnet deploy uses 4 days).
+2. `maxStaleness` is set conservatively (default 24h in contract; mainnet deploy uses 4 days).
 3. All prices are USD with **18 decimals** regardless of feed native decimals.
 4. Chainlink feeds return positive `answer` values; zero/negative answers revert.
-5. USDG (mainnet) is Paxos `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` — external stablecoin.
+5. USDG on mainnet is Paxos `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` — external stablecoin, not protocol-minted.
 
 ## Key invariants
 
@@ -44,17 +45,22 @@ Monolithic Foundry repo containing all Pledge Finance on-chain contracts. This d
 
 ## Trust boundaries
 
-- **Owner** can set prices (testnet) or wire feeds (mainnet), change staleness, pause markets, and rotate oracles.
+- **Owner** can wire Chainlink feeds, change staleness, pause markets, and rotate oracles on mainnet.
 - **Consumers** trust `getPrice()` and must not call stale feeds (enforced on-chain).
 
-## Integration checklist
+## Related: mainnet scripts
+
+Operational Foundry scripts (register markets, oracle feeds, fund liquidity, smoke tests, cutover) are audited separately in [`MAINNET_SCRIPT_AUDIT.md`](./MAINNET_SCRIPT_AUDIT.md). That document covers safe vs unsafe scripts for the live deployment, the critical `ConfigureProxiedVaultMainnet` address bug, and the required production runbook order.
+
+## Integration checklist (mainnet)
 
 - [ ] Feed addresses verified against Chainlink docs for Robinhood mainnet
-- [ ] `PledgeVaultManager.markets(collateral).oracle` points to audited oracle deployment
+- [ ] `PledgeVaultManager.markets(collateral).oracle` points to `PledgeChainlinkOracle` deployment
 - [ ] Staleness window reviewed against Chainlink heartbeat per asset
-- [ ] Testnet `PledgeOracle` not wired on mainnet vaults
-- [ ] Live addresses match `deployments/46630.json` (testnet) or `deployments/4663.json` (mainnet)
+- [ ] Legacy `PledgeOracle` is **not** wired on any mainnet vault market
+- [ ] Live addresses match [`deployments/4663.json`](./deployments/4663.json)
+- [ ] Deprecated vault `0xf486F332A162CC4bb844506254a649C300D64e9b` is not integrated
 
-## Split-repo equivalents
+## Testnet reference
 
-For audit-friendly review in smaller repos, see the path mapping in [README.md](./README.md#split-repo-mapping).
+Robinhood Testnet (chain `46630`) uses mock infrastructure documented in [`deployments/46630.json`](./deployments/46630.json). Testnet contracts listed under "Out of scope" must not appear in production integrations.

@@ -3,6 +3,7 @@ pragma solidity ^0.8.24;
 
 import {Test} from "forge-std/Test.sol";
 import {PledgeChainlinkOracle} from "../src/oracle/PledgeChainlinkOracle.sol";
+import {OracleProxyDeploy} from "../script/OracleProxyDeploy.sol";
 import {MockChainlinkFeed} from "../src/mocks/MockChainlinkFeed.sol";
 import {PledgeVaultManager} from "../src/core/PledgeVaultManager.sol";
 import {PledgeSurplusBuffer} from "../src/core/PledgeSurplusBuffer.sol";
@@ -19,7 +20,7 @@ contract PledgeChainlinkOracleTest is Test {
     function setUp() public {
         mNvda = new MockERC20("Pledge Finance mNVDA", "mNVDA", 18);
         feed = new MockChainlinkFeed("mNVDA / USD", 500_00000000, address(this));
-        oracle = new PledgeChainlinkOracle(address(this));
+        (oracle,) = OracleProxyDeploy.deploy(address(this));
         oracle.setMaxStaleness(4 days);
         oracle.setFeed(address(mNvda), address(feed));
 
@@ -55,7 +56,7 @@ contract PledgeChainlinkOracleTest is Test {
 
     function test_setMarketOracle_switchesFeed() public {
         MockChainlinkFeed cheaper = new MockChainlinkFeed("mNVDA / USD", 250_00000000, address(this));
-        PledgeChainlinkOracle oracle2 = new PledgeChainlinkOracle(address(this));
+        (PledgeChainlinkOracle oracle2,) = OracleProxyDeploy.deploy(address(this));
         oracle2.setMaxStaleness(4 days);
         oracle2.setFeed(address(mNvda), address(cheaper));
 

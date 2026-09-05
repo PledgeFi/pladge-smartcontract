@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IOracle} from "../interfaces/IOracle.sol";
 import {VaultMath} from "../libraries/VaultMath.sol";
+import {PledgeUupsOwnable} from "../upgrade/PledgeUupsOwnable.sol";
 import {PledgeSurplusBuffer} from "./PledgeSurplusBuffer.sol";
 
 /// @title PledgeVaultManager
 /// @author Pledge Finance
 /// @notice Pledge Finance isolated CDP vaults — deposit tokenized equity, borrow USDG on Robinhood Chain.
-contract PledgeVaultManager is Ownable, ReentrancyGuard {
+/// @dev Production: deploy behind ERC1967Proxy and call initialize(owner). Tests may pass owner in the constructor.
+contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     using SafeERC20 for IERC20;
     using VaultMath for uint256;
 
@@ -41,6 +42,10 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
 
     mapping(address collateral => Market) public markets;
     mapping(address collateral => mapping(address user => Position)) public positions;
+    /// @dev Borrowed principal still outstanding (excludes accrued stability fee).
+    mapping(address collateral => mapping(address user => uint256)) public principalDebt;
+    /// @dev First borrow timestamp for the current debt cycle; 0 when fully repaid.
+    mapping(address collateral => mapping(address user => uint256)) public debtOpenedAt;
 
     address[] public marketList;
 
@@ -66,6 +71,7 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         uint256 collateralSeized
     );
     event LiquidityFunded(address indexed from, uint256 amount);
+    event LiquidityWithdrawn(address indexed to, uint256 amount);
 
     error MarketNotActive();
     error MarketExists();
@@ -74,12 +80,19 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
     error ExceedsMaxLtv();
     error HealthFactorTooLow();
     error NotLiquidatable();
+    error SelfLiquidationNotAllowed();
     error ZeroAmount();
 
-    constructor(address usdg_, address surplusBuffer_, address owner_) Ownable(owner_) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor(address usdg_, address surplusBuffer_, address owner_) {
         usdg = IERC20(usdg_);
         usdgDecimals = _decimals(usdg_);
         surplusBuffer = PledgeSurplusBuffer(surplusBuffer_);
+        _disableAndMaybeSetOwner(owner_);
+    }
+
+    function initialize(address owner_) external initializer {
+        _initOwner(owner_);
     }
 
     // ── Admin ──────────────────────────────────────────────────────────────
@@ -133,6 +146,14 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         emit LiquidityFunded(msg.sender, amount);
     }
 
+    /// @notice Owner pulls idle USDG inventory. Does not touch user equity collateral.
+    function withdrawLiquidity(address to, uint256 amount) external onlyOwner nonReentrant {
+        if (to == address(0)) revert ZeroAddress();
+        if (amount == 0) revert ZeroAmount();
+        usdg.safeTransfer(to, amount);
+        emit LiquidityWithdrawn(to, amount);
+    }
+
     // ── User actions ───────────────────────────────────────────────────────
 
     function deposit(address collateral, uint256 amount) external nonReentrant {
@@ -180,6 +201,13 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         if (newDebtUsd > VaultMath.maxDebt(collateralUsd, market.maxLtvBps)) revert ExceedsMaxLtv();
         if (usdg.balanceOf(address(this)) < amount) revert InsufficientLiquidity();
 
+        if (pos.debt > 0 && principalDebt[collateral][msg.sender] == 0) {
+            principalDebt[collateral][msg.sender] = pos.debt;
+        }
+        if (debtOpenedAt[collateral][msg.sender] == 0) {
+            debtOpenedAt[collateral][msg.sender] = block.timestamp;
+        }
+        principalDebt[collateral][msg.sender] += amount;
         pos.debt = newDebt;
 
         usdg.safeTransfer(msg.sender, payout);
@@ -198,7 +226,7 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         _accrue(pos, market.stabilityFeeAprBps);
 
         uint256 repayAmount = amount > pos.debt ? pos.debt : amount;
-        pos.debt -= repayAmount;
+        _applyPrincipalRepay(collateral, msg.sender, pos, repayAmount);
 
         usdg.safeTransferFrom(msg.sender, address(this), repayAmount);
         emit Repaid(msg.sender, collateral, repayAmount);
@@ -206,6 +234,8 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
 
     /// @notice Liquidate an undercollateralized position. Liquidator repays debt and receives collateral at a bonus.
     function liquidate(address user, address collateral) external nonReentrant {
+        if (msg.sender == user) revert SelfLiquidationNotAllowed();
+
         Market memory market = _requireActiveMarket(collateral);
         Position storage pos = positions[collateral][user];
         _accrue(pos, market.stabilityFeeAprBps);
@@ -220,10 +250,12 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         uint8 decimals = _decimals(collateral);
 
         uint256 collateralToSeize =
-            (debt * (VaultMath.BPS + market.liqBonusBps) * (10 ** uint256(decimals))) / (price * VaultMath.BPS);
+            (debtUsd * (VaultMath.BPS + market.liqBonusBps) * (10 ** uint256(decimals))) / (price * VaultMath.BPS);
         if (collateralToSeize > pos.collateral) collateralToSeize = pos.collateral;
 
         pos.debt = 0;
+        principalDebt[collateral][user] = 0;
+        debtOpenedAt[collateral][user] = 0;
         pos.collateral -= collateralToSeize;
 
         usdg.safeTransferFrom(msg.sender, address(this), debt);
@@ -262,6 +294,29 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         return marketList.length;
     }
 
+    /// @notice Principal, accrued interest, and time borrowed — paid at repay, not monthly.
+    function getRepayBreakdown(address user, address collateral)
+        external
+        view
+        returns (uint256 principal, uint256 interest, uint256 total, uint256 openedAt, uint16 aprBps)
+    {
+        Market memory market = markets[collateral];
+        if (market.collateral == address(0)) revert MarketUnknown();
+
+        Position memory pos = positions[collateral][user];
+        uint256 pending = VaultMath.accrueInterest(pos.debt, market.stabilityFeeAprBps, pos.lastAccrual);
+        total = pos.debt + pending;
+
+        uint256 storedPrincipal = principalDebt[collateral][user];
+        principal = storedPrincipal == 0 ? pos.debt : storedPrincipal;
+        if (principal > total) principal = total;
+        interest = total - principal;
+
+        openedAt = debtOpenedAt[collateral][user];
+        if (openedAt == 0 && pos.debt > 0) openedAt = pos.lastAccrual;
+        aprBps = market.stabilityFeeAprBps;
+    }
+
     // ── Internals ──────────────────────────────────────────────────────────
 
     function _requireActiveMarket(address collateral) internal view returns (Market memory market) {
@@ -274,6 +329,30 @@ contract PledgeVaultManager is Ownable, ReentrancyGuard {
         uint256 interest = VaultMath.accrueInterest(pos.debt, stabilityFeeAprBps, pos.lastAccrual);
         if (interest > 0) pos.debt += interest;
         pos.lastAccrual = block.timestamp;
+    }
+
+    /// @dev Repay interest first, then principal. Full repay clears the debt clock.
+    function _applyPrincipalRepay(
+        address collateral,
+        address user,
+        Position storage pos,
+        uint256 repayAmount
+    ) internal {
+        uint256 prin = principalDebt[collateral][user];
+        if (prin == 0) prin = pos.debt;
+        if (prin > pos.debt) prin = pos.debt;
+
+        uint256 interestOwed = pos.debt - prin;
+        uint256 fromPrincipal = repayAmount > interestOwed ? repayAmount - interestOwed : 0;
+        if (fromPrincipal > prin) fromPrincipal = prin;
+
+        pos.debt -= repayAmount;
+        if (pos.debt == 0) {
+            principalDebt[collateral][user] = 0;
+            debtOpenedAt[collateral][user] = 0;
+        } else {
+            principalDebt[collateral][user] = prin - fromPrincipal;
+        }
     }
 
     function _collateralUsd(uint256 amount, address collateral, address oracle)

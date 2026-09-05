@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Assert deployments/46630.json contract keys match .env.example addresses.
+# Assert deployments/4663.json contract keys match .env.example addresses.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="$ROOT/.env.example"
-DEPLOY_FILE="$ROOT/deployments/46630.json"
+DEPLOY_FILE="$ROOT/deployments/4663.json"
 
 if ! command -v jq >/dev/null 2>&1; then
   echo "jq is required for verify-deployments.sh" >&2
@@ -39,24 +39,22 @@ check_pair() {
 }
 
 fail=0
-check_pair VAULT_MANAGER PledgeVaultManager || fail=1
-check_pair PLEDGE_ORACLE PledgeOracle || fail=1
+check_pair MAINNET_VAULT_MANAGER PledgeVaultManager || fail=1
+check_pair MAINNET_ORACLE PledgeChainlinkOracle || fail=1
 check_pair SURPLUS_BUFFER PledgeSurplusBuffer || fail=1
 check_pair STABILITY_POOL PledgeStabilityPool || fail=1
-check_pair USDG_TOKEN PledgeFinanceUSDG || fail=1
-check_pair MNVDA_TOKEN PledgeFinanceMNVDA || fail=1
-check_pair MSPY_TOKEN PledgeFinanceMSPY || fail=1
-check_pair MAAPL_TOKEN PledgeFinanceMAAPL || fail=1
-check_pair MQQQ_TOKEN PledgeFinanceMQQQ || fail=1
-check_pair MMSFT_TOKEN PledgeFinanceMMSFT || fail=1
-check_pair MAMZN_TOKEN PledgeFinanceMAMZN || fail=1
-check_pair MMETA_TOKEN PledgeFinanceMMETA || fail=1
-check_pair PLG_TOKEN PledgeFinancePLG || fail=1
-check_pair PLEDGE_STAKING PledgeStaking || fail=1
-check_pair PLEDGE_BRIDGE PledgeTestnetBridge || fail=1
+check_pair USDG_TOKEN PaxosUSDG || fail=1
+check_pair NVDA_TOKEN RobinhoodNVDA || fail=1
+check_pair SPY_TOKEN RobinhoodSPY || fail=1
+check_pair AAPL_TOKEN RobinhoodAAPL || fail=1
+check_pair QQQ_TOKEN RobinhoodQQQ || fail=1
+check_pair MSFT_TOKEN RobinhoodMSFT || fail=1
+check_pair AMZN_TOKEN RobinhoodAMZN || fail=1
+check_pair META_TOKEN RobinhoodMETA || fail=1
+check_pair GOOGL_TOKEN RobinhoodGOOGL || fail=1
 
 if [[ "$fail" -ne 0 ]]; then
   exit 1
 fi
 
-echo "deployments/46630.json matches .env.example"
+echo "deployments/4663.json matches .env.example"

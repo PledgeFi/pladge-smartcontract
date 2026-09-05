@@ -7,6 +7,7 @@ import {PledgeSurplusBuffer} from "../src/core/PledgeSurplusBuffer.sol";
 import {PledgeStabilityPool} from "../src/core/PledgeStabilityPool.sol";
 import {PledgeOracle} from "../src/oracle/PledgeOracle.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
+import {VaultProxyDeploy} from "../script/VaultProxyDeploy.sol";
 import {VaultMath} from "../src/libraries/VaultMath.sol";
 
 contract PledgeVaultManagerTest is Test {
@@ -90,6 +91,22 @@ contract PledgeVaultManagerTest is Test {
         vm.stopPrank();
     }
 
+    function test_cannotSelfLiquidate() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 3000e18);
+        vm.stopPrank();
+
+        oracle.setPrice(address(mNvda), 280e18);
+
+        usdg.transfer(alice, 5000e18);
+        vm.startPrank(alice);
+        usdg.approve(address(vault), type(uint256).max);
+        vm.expectRevert(PledgeVaultManager.SelfLiquidationNotAllowed.selector);
+        vault.liquidate(alice, address(mNvda));
+        vm.stopPrank();
+    }
+
     function test_liquidationAfterPriceDrop() public {
         vm.startPrank(alice);
         vault.deposit(address(mNvda), 10e18);
@@ -98,13 +115,7 @@ contract PledgeVaultManagerTest is Test {
 
         oracle.setPrice(address(mNvda), 280e18);
 
-        // Warp past the cooldown period (48 hours) to mint for bob
-        vm.warp(block.timestamp + 48 hours + 1);
-
-        // Update the oracle price after warping to ensure it's fresh
-        oracle.setPrice(address(mNvda), 280e18);
-
-        usdg.mint(bob, 5000e18);
+        usdg.transfer(bob, 5000e18);
         vm.startPrank(bob);
         usdg.approve(address(vault), type(uint256).max);
         vault.liquidate(alice, address(mNvda));
@@ -142,5 +153,101 @@ contract PledgeVaultManagerTest is Test {
         assertEq(collateral, 10e18);
         assertEq(debt, 3000e6);
         assertGt(vault6.getHealthFactor(alice, address(mNvda)), VaultMath.WAD);
+    }
+
+    function test_liquidationSeizesCorrectlyWithSixDecimalUsdg() public {
+        MockERC20 usdg6 = new MockERC20("USDG", "USDG", 6);
+        PledgeSurplusBuffer surplus6 = new PledgeSurplusBuffer(address(usdg6), admin);
+        PledgeVaultManager vault6 = new PledgeVaultManager(address(usdg6), address(surplus6), admin);
+
+        vault6.registerMarket(address(mNvda), address(oracle), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 50);
+
+        usdg6.mint(admin, 1_000_000e6);
+        usdg6.approve(address(vault6), type(uint256).max);
+        vault6.fundLiquidity(500_000e6);
+
+        vm.startPrank(alice);
+        mNvda.approve(address(vault6), type(uint256).max);
+        vault6.deposit(address(mNvda), 10e18);
+        vault6.borrow(address(mNvda), 3000e6);
+        vm.stopPrank();
+
+        oracle.setPrice(address(mNvda), 400e18);
+
+        usdg6.transfer(bob, 5000e6);
+        uint256 bobSharesBefore = mNvda.balanceOf(bob);
+        vm.startPrank(bob);
+        usdg6.approve(address(vault6), type(uint256).max);
+        vault6.liquidate(alice, address(mNvda));
+        vm.stopPrank();
+
+        (uint256 collateral, uint256 debt,) = vault6.positions(address(mNvda), alice);
+        assertEq(debt, 0);
+        // 3000 USDG * 1.05 bonus / $400 = 7.875 shares seized, 2.125 left.
+        assertEq(collateral, 2.125e18);
+        assertEq(mNvda.balanceOf(bob) - bobSharesBefore, 7.875e18);
+    }
+
+    function test_repayBreakdownAccruesWithTime() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        (uint256 principal, uint256 interest, uint256 total, uint256 openedAt, uint16 aprBps) =
+            vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(principal, 2000e18);
+        assertEq(interest, 0);
+        assertEq(total, 2000e18);
+        assertGt(openedAt, 0);
+        assertEq(aprBps, 120);
+
+        vm.warp(block.timestamp + 365 days);
+
+        (principal, interest, total, , ) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(principal, 2000e18);
+        assertEq(interest, 24e18);
+        assertEq(total, 2024e18);
+
+        usdg.mint(alice, 2024e18);
+        vm.startPrank(alice);
+        usdg.approve(address(vault), type(uint256).max);
+        vault.repay(address(mNvda), 24e18);
+        vm.stopPrank();
+
+        (principal, interest, total, openedAt, ) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(principal, 2000e18);
+        assertEq(interest, 0);
+        assertEq(total, 2000e18);
+        assertGt(openedAt, 0);
+
+        vm.startPrank(alice);
+        vault.repay(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        (principal, interest, total, openedAt, ) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(principal, 0);
+        assertEq(interest, 0);
+        assertEq(total, 0);
+        assertEq(openedAt, 0);
+    }
+
+    function test_ownerCanWithdrawLiquidity() public {
+        uint256 beforeBal = usdg.balanceOf(admin);
+        vault.withdrawLiquidity(admin, 1000e18);
+        assertEq(usdg.balanceOf(admin), beforeBal + 1000e18);
+    }
+
+    function test_proxyInitializeAndWithdraw() public {
+        (PledgeVaultManager proxied,) =
+            VaultProxyDeploy.deploy(address(usdg), address(surplus), admin);
+        assertEq(proxied.owner(), admin);
+        assertEq(address(proxied.usdg()), address(usdg));
+
+        proxied.registerMarket(address(mNvda), address(oracle), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 50);
+        usdg.approve(address(proxied), 5_000e18);
+        proxied.fundLiquidity(5_000e18);
+        proxied.withdrawLiquidity(bob, 5_000e18);
+        assertEq(usdg.balanceOf(bob), 5_000e18);
     }
 }
