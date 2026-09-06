@@ -4,6 +4,8 @@ pragma solidity ^0.8.24;
 import {Test} from "forge-std/Test.sol";
 import {MockERC20} from "../src/mocks/MockERC20.sol";
 import {PledgeStaking} from "../src/core/PledgeStaking.sol";
+import {PledgeUupsOwnable} from "../src/upgrade/PledgeUupsOwnable.sol";
+import {ProxyDeploy} from "../script/ProxyDeploy.sol";
 
 contract PledgeStakingTest is Test {
     MockERC20 internal plg;
@@ -11,6 +13,7 @@ contract PledgeStakingTest is Test {
     PledgeStaking internal staking;
 
     address internal alice = makeAddr("alice");
+    address internal bob = makeAddr("bob");
     address internal admin = makeAddr("admin");
 
     uint256 internal plgPool;
@@ -32,6 +35,8 @@ contract PledgeStakingTest is Test {
 
         plg.mint(alice, 10_000e18);
         usdg.mint(alice, 10_000e18);
+        vm.prank(bob);
+        plg.mint(bob, 10_000e18);
     }
 
     function test_stake_and_claim_rewards() public {
@@ -40,8 +45,13 @@ contract PledgeStakingTest is Test {
         staking.stake(plgPool, 1_000e18);
 
         vm.warp(block.timestamp + 1 days);
+        uint256 pending = staking.pendingReward(plgPool, alice);
+        assertEq(pending, 1e16 * 1 days);
+
+        uint256 beforeBal = plg.balanceOf(alice);
         staking.claim(plgPool);
-        assertGt(plg.balanceOf(alice), 9_000e18);
+        assertEq(plg.balanceOf(alice) - beforeBal, pending);
+        assertEq(staking.pendingReward(plgPool, alice), 0);
         vm.stopPrank();
     }
 
@@ -51,8 +61,9 @@ contract PledgeStakingTest is Test {
         staking.stake(plgPool, 500e18);
 
         vm.warp(block.timestamp + 7 days);
+        uint256 rewards = 1e16 * 7 days;
         staking.unstake(plgPool, 200e18);
-        assertGt(plg.balanceOf(alice), 9_700e18);
+        assertEq(plg.balanceOf(alice), 9_700e18 + rewards);
         assertEq(staking.pendingReward(plgPool, alice), 0);
         vm.stopPrank();
     }
@@ -64,5 +75,198 @@ contract PledgeStakingTest is Test {
         vm.expectRevert(PledgeStaking.LockActive.selector);
         staking.unstake(plgPool, 100e18);
         vm.stopPrank();
+    }
+
+    function test_usdgPoolHasNoLock() public {
+        vm.startPrank(alice);
+        usdg.approve(address(staking), type(uint256).max);
+        staking.stake(usdgPool, 1_000e18);
+        staking.unstake(usdgPool, 1_000e18);
+        assertEq(usdg.balanceOf(alice), 10_000e18);
+        vm.stopPrank();
+    }
+
+    function test_rewardsSplitProportionalToStake() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 1_000e18);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 1_000e18);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 100);
+
+        uint256 alicePending = staking.pendingReward(plgPool, alice);
+        uint256 bobPending = staking.pendingReward(plgPool, bob);
+        assertEq(alicePending, bobPending);
+        assertEq(alicePending + bobPending, 1e16 * 100);
+    }
+
+    function test_emissionsStopWhenReserveRunsOut() public {
+        PledgeStaking fresh = new PledgeStaking(admin);
+        vm.startPrank(admin);
+        uint256 poolId = fresh.addPool(address(plg), address(plg), 1e18, 0, true);
+        plg.approve(address(fresh), type(uint256).max);
+        fresh.fundRewards(poolId, 10e18);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        plg.approve(address(fresh), type(uint256).max);
+        fresh.stake(poolId, 100e18);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 100 days);
+        assertEq(fresh.pendingReward(poolId, alice), 10e18);
+
+        vm.prank(alice);
+        fresh.claim(poolId);
+        assertEq(plg.balanceOf(alice), 10_000e18 - 100e18 + 10e18);
+        assertEq(fresh.pendingReward(poolId, alice), 0);
+
+        vm.warp(block.timestamp + 1 days);
+        assertEq(fresh.pendingReward(poolId, alice), 0);
+    }
+
+    function test_inactivePoolBlocksStakeButAllowsUnstakeAndClaim() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 500e18);
+        vm.stopPrank();
+
+        vm.prank(admin);
+        staking.setPoolActive(plgPool, false);
+
+        vm.startPrank(alice);
+        vm.expectRevert(PledgeStaking.PoolInactive.selector);
+        staking.stake(plgPool, 1e18);
+
+        vm.warp(block.timestamp + 7 days);
+        staking.claim(plgPool);
+        staking.unstake(plgPool, 500e18);
+        vm.stopPrank();
+    }
+
+    function test_ownerCanWithdrawUnusedRewards() public {
+        uint256 adminBefore = plg.balanceOf(admin);
+        vm.prank(admin);
+        staking.withdrawRewards(usdgPool, admin, 1_000e18);
+        assertEq(plg.balanceOf(admin), adminBefore + 1_000e18);
+
+        (,,,,,,,,, uint256 reserve) = staking.pools(usdgPool);
+        assertEq(reserve, 99_000e18);
+    }
+
+    function test_withdrawRewardsCannotTakeStakedPrincipal() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 1_000e18);
+        vm.stopPrank();
+
+        (,,,,,,,,, uint256 reserve) = staking.pools(plgPool);
+        vm.prank(admin);
+        vm.expectRevert(PledgeStaking.InsufficientRewardReserve.selector);
+        staking.withdrawRewards(plgPool, admin, reserve + 1);
+    }
+
+    function test_addPoolRejectsZeroToken() public {
+        vm.startPrank(admin);
+        vm.expectRevert(PledgeUupsOwnable.ZeroAddress.selector);
+        staking.addPool(address(0), address(plg), 1, 0, true);
+        vm.expectRevert(PledgeUupsOwnable.ZeroAddress.selector);
+        staking.addPool(address(plg), address(0), 1, 0, true);
+        vm.stopPrank();
+    }
+
+    function test_proxyInitialize() public {
+        (PledgeStaking proxied,) = ProxyDeploy.staking(admin);
+        assertEq(proxied.owner(), admin);
+        vm.prank(admin);
+        uint256 poolId = proxied.addPool(address(plg), address(plg), 1e16, 0, true);
+        assertEq(poolId, 0);
+        assertEq(proxied.poolCount(), 1);
+    }
+
+    function test_stakeWithCustomLockDuration() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 500e18, 1 days);
+        vm.stopPrank();
+
+        (uint256 amount, uint256 pending, uint256 lockedUntil, uint256 lockDuration, uint256 lockRemaining) =
+            staking.getPosition(plgPool, alice);
+        assertEq(amount, 500e18);
+        assertEq(pending, 0);
+        assertEq(lockDuration, 1 days);
+        assertEq(lockRemaining, 1 days);
+        assertEq(lockedUntil, block.timestamp + 1 days);
+
+        vm.prank(alice);
+        vm.expectRevert(PledgeStaking.LockActive.selector);
+        staking.unstake(plgPool, 500e18);
+
+        vm.warp(block.timestamp + 1 days);
+        vm.prank(alice);
+        staking.unstake(plgPool, 500e18);
+
+        (amount,,,, lockRemaining) = staking.getPosition(plgPool, alice);
+        assertEq(amount, 0);
+        assertEq(lockRemaining, 0);
+    }
+
+    function test_customLockMustBeWithinPoolRange() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        vm.expectRevert(PledgeStaking.InvalidLockDuration.selector);
+        staking.stake(plgPool, 100e18, 8 days);
+        vm.stopPrank();
+
+        vm.prank(admin);
+        staking.setLockDuration(plgPool, 1 days, 30 days);
+
+        vm.startPrank(alice);
+        vm.expectRevert(PledgeStaking.InvalidLockDuration.selector);
+        staking.stake(plgPool, 100e18, 12 hours);
+        staking.stake(plgPool, 100e18, 30 days);
+        vm.stopPrank();
+
+        (,,, uint256 lockDuration,) = staking.getPosition(plgPool, alice);
+        assertEq(lockDuration, 30 days);
+    }
+
+    function test_defaultStakeUsesMaxLock() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 100e18);
+        vm.stopPrank();
+
+        (,,, uint256 lockDuration, uint256 lockRemaining) = staking.getPosition(plgPool, alice);
+        assertEq(lockDuration, 7 days);
+        assertEq(lockRemaining, 7 days);
+    }
+
+    function test_restakeCannotShortenActiveLock() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 100e18, 7 days);
+        uint256 originalUnlock;
+        (,, originalUnlock,,) = staking.getPosition(plgPool, alice);
+
+        staking.stake(plgPool, 50e18, 1 days);
+        vm.stopPrank();
+
+        (,, uint256 lockedUntil, uint256 lockDuration,) = staking.getPosition(plgPool, alice);
+        assertEq(lockedUntil, originalUnlock);
+        assertEq(lockDuration, 1 days);
+    }
+
+    function test_addPoolWithMinAndMaxLock() public {
+        vm.prank(admin);
+        uint256 poolId = staking.addPool(address(plg), address(plg), 1e16, 3 days, 14 days, true);
+        (,,,,,, uint256 minLock, uint256 maxLock,,) = staking.pools(poolId);
+        assertEq(minLock, 3 days);
+        assertEq(maxLock, 14 days);
     }
 }
