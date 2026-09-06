@@ -354,6 +354,65 @@ contract PledgeVaultManagerTest is Test {
         assertEq(usdg.balanceOf(bob), 5_000e18);
     }
 
+    function test_liquidationCapsSeizeWhenBonusExceedsCollateral() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 3000e18);
+        vm.stopPrank();
+
+        // 3000 USDG * 1.05 bonus / $280 = 11.25 shares, capped at the 10 deposited.
+        oracle.setPrice(address(mNvda), 280e18);
+
+        uint256 bobUsdgBefore = 5000e18;
+        usdg.transfer(bob, bobUsdgBefore);
+        vm.startPrank(bob);
+        usdg.approve(address(vault), type(uint256).max);
+        vault.liquidate(alice, address(mNvda));
+        vm.stopPrank();
+
+        (uint256 collateral, uint256 debt,) = vault.positions(address(mNvda), alice);
+        assertEq(debt, 0);
+        assertEq(collateral, 0);
+        assertEq(mNvda.balanceOf(bob), 10e18);
+        assertEq(usdg.balanceOf(bob), bobUsdgBefore - 3000e18);
+    }
+
+    function test_upgradeToV2PreservesPositionStorage() public {
+        (PledgeVaultManager proxied,) = VaultProxyDeploy.deploy(address(usdg), address(surplus), admin);
+        proxied.registerMarket(address(mNvda), address(oracle), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 50);
+        usdg.approve(address(proxied), type(uint256).max);
+        proxied.fundLiquidity(50_000e18);
+
+        vm.startPrank(alice);
+        mNvda.approve(address(proxied), type(uint256).max);
+        proxied.deposit(address(mNvda), 10e18);
+        proxied.borrow(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        (uint256 col, uint256 debt, uint256 lastAccrual) = proxied.positions(address(mNvda), alice);
+        uint256 principal = proxied.principalDebt(address(mNvda), alice);
+        uint256 openedAt = proxied.debtOpenedAt(address(mNvda), alice);
+
+        PledgeVaultManagerV2 v2Impl = new PledgeVaultManagerV2(address(usdg), address(surplus), address(0));
+        proxied.upgradeToAndCall(address(v2Impl), "");
+
+        PledgeVaultManagerV2 upgraded = PledgeVaultManagerV2(address(proxied));
+        (uint256 colAfter, uint256 debtAfter, uint256 lastAfter) = upgraded.positions(address(mNvda), alice);
+        assertEq(colAfter, col);
+        assertEq(debtAfter, debt);
+        assertEq(lastAfter, lastAccrual);
+        assertEq(upgraded.principalDebt(address(mNvda), alice), principal);
+        assertEq(upgraded.debtOpenedAt(address(mNvda), alice), openedAt);
+        assertEq(upgraded.owner(), admin);
+        assertEq(upgraded.extraSlot(), 0);
+
+        upgraded.setExtraSlot(42);
+        assertEq(upgraded.extraSlot(), 42);
+        (colAfter, debtAfter,) = upgraded.positions(address(mNvda), alice);
+        assertEq(colAfter, col);
+        assertEq(debtAfter, debt);
+    }
+
     function test_setMarketParamsUpdatesAndEmits() public {
         vm.expectEmit(true, false, false, true);
         emit PledgeVaultManager.MarketParamsUpdated(address(mNvda), 5000, 17000, 400, 240, 25);
@@ -454,5 +513,18 @@ contract PledgeVaultManagerTest is Test {
         (, uint256 interest, uint256 total,,) = vault.getRepayBreakdown(alice, address(mNvda));
         assertEq(interest, 24e18 + 48.576e18);
         assertEq(total, 2024e18 + 48.576e18);
+    }
+}
+
+/// @dev Append-only extra slot to prove a v2 upgrade does not shift live position storage.
+contract PledgeVaultManagerV2 is PledgeVaultManager {
+    uint256 public extraSlot;
+
+    constructor(address usdg_, address surplusBuffer_, address owner_)
+        PledgeVaultManager(usdg_, surplusBuffer_, owner_)
+    {}
+
+    function setExtraSlot(uint256 value) external onlyOwner {
+        extraSlot = value;
     }
 }
