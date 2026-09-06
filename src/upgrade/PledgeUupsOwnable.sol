@@ -6,6 +6,12 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts/proxy/utils/UUPSUpgradeab
 
 /// @title PledgeUupsOwnable
 /// @notice Shared UUPS owner for protocol contracts. Production: constructor owner = 0, then ERC1967 `initialize`.
+/// @dev STORAGE LAYOUT IS LOAD-BEARING: several already-deployed mainnet proxies (oracle, vault,
+///      surplus buffer, stability pool) inherit this contract first, so `owner` MUST stay the only
+///      variable declared here at slot 0. Never add another plain state variable to this contract —
+///      it would shift every storage slot in every derived contract and corrupt already-deployed
+///      proxy storage (this happened once; see git history / incident notes). If two-step ownership
+///      or any other new field is needed, use an ERC-7201 namespaced storage struct instead.
 abstract contract PledgeUupsOwnable is Initializable, UUPSUpgradeable {
     address public owner;
 

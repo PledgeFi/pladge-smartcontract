@@ -12,6 +12,15 @@
     "maxStalenessSeconds": 345600,
     "note": "Vault markets use PledgeChainlinkOracle proxy. Prices are USD with 18 decimals."
   },
+  "staking": {
+    "proxy": "0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d",
+    "implementation": "0x8d6BAd3bD6604D1dB700D7552609c99890051118",
+    "owner": "0x82FBf39835a885C1CdA3D756FB6AA79802f29e92",
+    "pools": {
+      "0": { "name": "PLG Staking", "stakeToken": "PLG", "rewardToken": "PLG", "minLock": "1 day", "lock": "90 days", "rewardReserve": "550000e18" },
+      "1": { "name": "USDG Staking", "stakeToken": "USDG", "rewardToken": "PLG", "minLock": "0", "lock": "0", "rewardReserve": "0" }
+    }
+  },
   "contracts": {
     "PledgeToken": "0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
     "PaxosUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
@@ -19,6 +28,8 @@
     "PledgeSurplusBuffer": "0xEa30446c46D61514f19c897224E65b13Fb0A826c",
     "PledgeVaultManager": "0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62",
     "PledgeStabilityPool": "0x8570a571CC83f87B3Ca4249B71646Cc807350e14",
+    "PledgeStaking": "0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d",
+    "PledgeStakingImplementation": "0x8d6BAd3bD6604D1dB700D7552609c99890051118",
     "RobinhoodNVDA": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
     "RobinhoodSPY": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
     "RobinhoodAAPL": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
