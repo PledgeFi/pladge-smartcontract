@@ -8,7 +8,7 @@ import {PledgeUupsOwnable} from "../upgrade/PledgeUupsOwnable.sol";
 
 /// @title PledgeStabilityPool
 /// @author Pledge Finance
-/// @notice Pledge Finance USDG pool for liquidation backstop.
+/// @notice USDG parking pool. Not a liquidation backstop — `liquidate` never spends these deposits.
 /// @dev Production: deploy behind ERC1967Proxy. Tests may pass owner in the constructor.
 contract PledgeStabilityPool is PledgeUupsOwnable, ReentrancyGuard {
     using SafeERC20 for IERC20;
@@ -25,6 +25,7 @@ contract PledgeStabilityPool is PledgeUupsOwnable, ReentrancyGuard {
 
     error OnlyVaultManager();
     error InsufficientBalance();
+    error PayDebtUnimplemented();
 
     modifier onlyVaultManager() {
         if (msg.sender != vaultManager) revert OnlyVaultManager();
@@ -61,8 +62,9 @@ contract PledgeStabilityPool is PledgeUupsOwnable, ReentrancyGuard {
         emit Withdrawn(msg.sender, amount);
     }
 
-    /// @notice Called by VaultManager during liquidation to spend pooled USDG.
-    function payDebt(address to, uint256 amount) external onlyVaultManager {
-        usdg.safeTransfer(to, amount);
+    /// @notice Intentionally unimplemented. Do not wire into `liquidate` until deposits are offset.
+    /// @dev A raw transfer would leave `balanceOf`/`totalDeposits` higher than the token balance.
+    function payDebt(address, uint256) external view onlyVaultManager {
+        revert PayDebtUnimplemented();
     }
 }

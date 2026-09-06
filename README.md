@@ -18,7 +18,7 @@ Production-grade overcollateralized vault protocol on **Robinhood Chain**. Users
 |---|---|
 | `PledgeVaultManager` | CDP vault — deposit collateral, borrow USDG, repay, withdraw, liquidate |
 | `PledgeSurplusBuffer` | Protocol fee treasury (USDG) |
-| `PledgeStabilityPool` | USDG backstop for liquidations |
+| `PledgeStabilityPool` | USDG parking pool (not used in liquidation) |
 | `PledgeChainlinkOracle` | Chainlink-backed price oracle (USD, 18 decimals) |
 | `VaultMath` | Health factor, collateral valuation, interest accrual |
 
