@@ -122,11 +122,11 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         });
         marketList.push(collateral);
 
-        emit MarketRegistered(
-            collateral, oracle, maxLtvBps, liqRatioBps, liqBonusBps, stabilityFeeAprBps
-        );
+        emit MarketRegistered(collateral, oracle, maxLtvBps, liqRatioBps, liqBonusBps, stabilityFeeAprBps);
     }
 
+    /// @notice Pause or unpause a market. `active=false` blocks only `deposit` and `borrow`.
+    /// @dev Repay, withdraw, and liquidate remain available so open positions are not trapped.
     function setMarketActive(address collateral, bool active) external onlyOwner {
         if (markets[collateral].collateral == address(0)) revert MarketUnknown();
         markets[collateral].active = active;
@@ -171,7 +171,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
     function withdraw(address collateral, uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
-        Market memory market = _requireActiveMarket(collateral);
+        Market memory market = _requireKnownMarket(collateral);
 
         Position storage pos = positions[collateral][msg.sender];
         _accrue(pos, market.stabilityFeeAprBps);
@@ -220,7 +220,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
     function repay(address collateral, uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
-        Market memory market = _requireActiveMarket(collateral);
+        Market memory market = _requireKnownMarket(collateral);
 
         Position storage pos = positions[collateral][msg.sender];
         _accrue(pos, market.stabilityFeeAprBps);
@@ -236,7 +236,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     function liquidate(address user, address collateral) external nonReentrant {
         if (msg.sender == user) revert SelfLiquidationNotAllowed();
 
-        Market memory market = _requireActiveMarket(collateral);
+        Market memory market = _requireKnownMarket(collateral);
         Position storage pos = positions[collateral][user];
         _accrue(pos, market.stabilityFeeAprBps);
 
@@ -319,9 +319,13 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
     // ── Internals ──────────────────────────────────────────────────────────
 
-    function _requireActiveMarket(address collateral) internal view returns (Market memory market) {
+    function _requireKnownMarket(address collateral) internal view returns (Market memory market) {
         market = markets[collateral];
         if (market.collateral == address(0)) revert MarketUnknown();
+    }
+
+    function _requireActiveMarket(address collateral) internal view returns (Market memory market) {
+        market = _requireKnownMarket(collateral);
         if (!market.active) revert MarketNotActive();
     }
 
@@ -332,12 +336,9 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     }
 
     /// @dev Repay interest first, then principal. Full repay clears the debt clock.
-    function _applyPrincipalRepay(
-        address collateral,
-        address user,
-        Position storage pos,
-        uint256 repayAmount
-    ) internal {
+    function _applyPrincipalRepay(address collateral, address user, Position storage pos, uint256 repayAmount)
+        internal
+    {
         uint256 prin = principalDebt[collateral][user];
         if (prin == 0) prin = pos.debt;
         if (prin > pos.debt) prin = pos.debt;
@@ -355,11 +356,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         }
     }
 
-    function _collateralUsd(uint256 amount, address collateral, address oracle)
-        internal
-        view
-        returns (uint256)
-    {
+    function _collateralUsd(uint256 amount, address collateral, address oracle) internal view returns (uint256) {
         uint256 price = IOracle(oracle).getPrice(collateral);
         return VaultMath.collateralValue(amount, price, _decimals(collateral));
     }
