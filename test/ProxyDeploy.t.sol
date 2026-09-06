@@ -42,6 +42,18 @@ contract ProxyDeployTest is Test {
         assertEq(pool.vaultManager(), makeAddr("vault"));
     }
 
+    function test_payDebtIsNotImplemented() public {
+        address admin = makeAddr("admin");
+        MockERC20 usdg = new MockERC20("USDG", "USDG", 18);
+        (PledgeStabilityPool pool,) = ProxyDeploy.pool(address(usdg), admin);
+        address vaultAddr = makeAddr("vault");
+        vm.prank(admin);
+        pool.setVaultManager(vaultAddr);
+        vm.prank(vaultAddr);
+        vm.expectRevert(PledgeStabilityPool.PayDebtUnimplemented.selector);
+        pool.payDebt(admin, 1e18);
+    }
+
     function test_implementationCannotInitializeTwice() public {
         address admin = makeAddr("admin");
         MockERC20 usdg = new MockERC20("USDG", "USDG", 18);

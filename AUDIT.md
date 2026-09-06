@@ -10,7 +10,7 @@ Monolithic Foundry repository containing all Pledge Finance on-chain contracts. 
 | `src/oracle/PledgeChainlinkOracle.sol` | Production Chainlink adapter (UUPS proxy) |
 | `src/core/PledgeVaultManager.sol` | CDP lifecycle, LTV, liquidation, interest accrual |
 | `src/core/PledgeSurplusBuffer.sol` | Fee custody |
-| `src/core/PledgeStabilityPool.sol` | USDG backstop |
+| `src/core/PledgeStabilityPool.sol` | USDG parking pool — not a liquidation backstop |
 | `src/libraries/VaultMath.sol` | HF, collateral valuation, interest math |
 
 ## Out of scope (testnet / auxiliary)
