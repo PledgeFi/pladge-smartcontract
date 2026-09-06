@@ -1,950 +1,744 @@
-# Pledge Finance — Product Specification
+# cursor-gustop.md — Pledge Finance: Full Project & Smart Contract Audit Briefing
 
-> Canonical product spec for testers, operators, and internal decisions.  
-> Last updated: 2026-09-02  
-> Status: **public testnet live** (Robinhood Chain 46630). **Mainnet target: on or about 5 September 2026** (about three days from this update) on chain **4663** — staged deploy already in progress. Treat the date as a **target, not a guarantee**.  
-> Related: [README](../README.md) · [testnet roadmap](./public-testnet-roadmap.md) · [risk calculator](./risk-calculator.md) · in-app `/docs`
+> **For:** Gustop (smart contract auditor) 
+> **From:** Pledge team 
+> **Date:** 2026-09-06 
+> **How to use:** keep this file at the repo root. In your Cursor, open the repo and prompt: *"Read `cursor-gustop.md` and `AGENTS.md` before answering anything."*
 
-This document is the source of truth for **what Pledge is, how money moves, what we will not do, and how to answer users**.
+This is the only file you need to start. It covers **what the product is, why it exists, where it is going**, then the architecture, the math, every contract, the issues we already know about, the current on-chain state, and what we hope to get back from you.
 
-**Use this file to train / ground any support AI, Discord bot, or social-reply agent.** If this spec and a tweet/landing line conflict, **this spec wins**. If something is not in this file, say you don’t know — do not invent tokenomics, APRs, buybacks, or seizure rules.
+If this file conflicts with the code → **the code wins**. Canonical mainnet addresses are in [`deployments/4663.json`](deployments/4663.json). Solidity in **this** repo lives at `src/` (not a nested `contracts/` tree). The live vault is `0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62` — do **not** treat `0x1757…` as canonical.
 
 ---
 
-## 0. Instructions for AIs (read first)
+# PART I — THE PRODUCT
 
-### 0.1 How to answer
+## 1. What Pledge is, in one paragraph
 
-- Match the user’s language (whatever they write in).
-- Lead with the direct yes/no, then one short why.
-- Separate **live now** vs **planned** vs **rejected**. Never present a roadmap item as if it already ships.
-- Never give financial advice (“you should borrow / buy PLG”). Explain mechanics only.
-- Never promise audits, yields, buybacks, or a **guaranteed** mainnet clock. The only date in this file is a **target** (§4 / header).
-- **Tax:** follow §22. Never invent a rate, form, or “you owe $0.”
-- **Bugs / incidents:** follow §21. Never say the protocol is bug-free or that losses will be reimbursed unless the team has announced it.
-- Testnet USDG and m-tokens are **mocks**. Say so when the user might think they are Paxos or real stocks.
-- Launchpad **PLG** ≠ testnet mock PLG address. Don’t mix chains.
-- **Legal / tax / licensing questions:** follow §0.4, §20, and §22. Never invent a license, regulator approval, or “this is legal in your country.”
+**Pledge Finance** is an **overcollateralized CDP protocol on Robinhood Chain**. A user locks **tokenized equity or ETFs** (NVDA, AAPL, SPY, …) into an isolated vault and borrows **USDG that already exists** in the vault's inventory.
 
-### 0.2 Never say
+Pledge is **not** a stablecoin minter. On mainnet, USDG is **Paxos USDG**. On testnet it is a mock ERC-20. We never create dollars; we lend dollars someone already put in the vault.
 
-| Don’t say | Say instead |
+Loans are **perpetual**: no maturity date, no monthly bill. Interest is a **time-based stability fee APR**, paid **at repayment**, and shown to the user as a receipt (principal, time borrowed, interest, total due). Liquidation happens **only when the health factor drops below 1**. A rising share price **does not** raise the borrow APR — the upside stays with the user.
+
+Pledge is not a broker, not a bank, not a pawn shop, not a term lender. Each vault is **isolated: one user × one collateral × one USDG debt**. There is no cross-margin and no global debt pool.
+
+## 2. The problem we're solving (why this exists)
+
+Someone holds $50k of NVDA. They need $20k of liquidity for six months. Their options today:
+
+| Option | What it costs them |
 |---|---|
-| “Pledge mints USDG against your shares” | You **borrow existing** USDG from vault inventory |
-| “If you don’t repay, the platform takes the shares” | Only if **HF < 1**; no due date; no seizure of a healthy vault |
-| “You must pay interest every month” | Interest **accrues** and is paid **when you repay** |
-| “The longer you wait we confiscate” | The longer you wait, **interest is higher** at repayment |
-| “If the stock pumps we raise your rate” | Rate is **time-based APR only**; pump **helps** HF |
-| “Fees buy back and burn PLG” | Fees go to **Surplus Buffer**. Burn is **not live** |
-| “Governance is live / PLG = 1 token 1 vote” | Governance is **preview**. Direction: **lock PLG → vePLG** |
-| “Stability Pool USDG is lent to borrowers” | Two pots. Pool is a **liquidation backstop**, not lend inventory |
-| “This is risk-free / like a bank deposit” | Overcollateralized DeFi credit; liquidation and smart-contract risk exist |
-| “We are a licensed bank / broker / licensed lender anywhere” | We are a **global smart-contract protocol**. This spec claims **no** license or registration |
-| “This is legal in every country / no tax anywhere” | **Not legal or tax advice.** Each user must follow **their** local law |
-| “m-tokens are registered securities we issued” | Testnet = **mocks**. Mainnet stocks = **issuer/chain tokens**, not minted by Pledge |
-| “There are no bugs / we will refund all losses” | Software can fail. Report it. Compensation is **not** automatic |
-| “The IRS / HMRC said Pledge is tax-free” | Those agencies have **general** crypto/property rules. They have **not** ruled on Pledge |
+| Sell the shares | Loses the position. If NVDA doubles, they lose that upside permanently. Plus a taxable event in most jurisdictions. |
+| Broker margin loan | Available, but it's a margin *account*: the broker can force-liquidate on their terms, rates move, and it's tied to one institution. |
+| Personal loan | Credit check, income docs, fixed term, monthly payments, and it doesn't use the asset they already own. |
 
-### 0.4 Legal questions (mandatory) — global market
+Pledge's answer: **keep the shares, borrow against them, pay interest only for the time you actually borrow, and never get called on a healthy position.**
 
-Audience is **worldwide**, not one domestic regulator. Do not lead with any local authority. Do not name-drop country licenses to sound official.
+The product promise, in the user's words: *"I didn't sell. My shares are still mine. I have cash. Nobody can take my shares as long as I stay overcollateralized."*
 
-This spec is **not** a legal opinion. Counsel has not signed it.
+This is only possible now because equities are being tokenized on-chain. Robinhood Chain is where those tokens live, which is why Pledge lives there.
 
-When someone asks law, license, tax, securities, KYC, “is this legal in my country?”:
+## 3. The five protected narrative statements
 
-1. Say: **not legal, tax, or investment advice.**
-2. Use **product facts** in §20 (what the software is / is not). Tax → **§22**. Incidents → **§21**.
-3. Legality **where they live** → we do **not** certify it. They need counsel **in that jurisdiction**. Do not guess or cite any regulator as if we are registered there.
-4. Never imply testnet mocks are Paxos USDG or real listed shares.
-5. Never classify PLG as a security / not a security. **No classification.**
-6. Escalate to the team (don’t invent policy) for: ToS, geo-blocks, sanctioned persons, airdrop rules, “can users in country X use this.”
+These are not marketing lines. They are **design constraints**, and they determine what counts as a bug in the audit.
 
-### 0.3 MVP vs later (so the AI doesn’t oversell)
+1. The user **does not sell**. Shares are locked in the vault; they are still the user's position.
+2. **No term, no maturity.** They can hold the loan for years.
+3. **No seizure of a healthy vault** (HF ≥ 1). The platform is not a collections desk.
+4. Interest **follows time**, and is paid **at repayment** — not invoiced monthly.
+5. The stock pumping **improves** the health factor. The APR **does not** follow the pump.
 
-**MVP (what we ship / are shipping on testnet, core story):**
+### Permanently rejected (do not recommend these, even if they are "industry standard")
 
-- Deposit tokenized equity → borrow USDG → repay anytime → withdraw shares.
-- **Perpetual** loan: no maturity, no monthly bill.
-- **Interest grows with time**, itemized on the repay receipt (principal + duration + interest + total).
-- Liquidation **only** at HF < 1.00.
-- Stability Pool, faucet (testnet), staking, liquidator UI, analytics, operator price admin.
-- Team/treasury seeds vault USDG (`fundLiquidity`).
+- Seizure because N months elapsed / anything term-loan shaped
+- Mandatory monthly USDG payments
+- APR that tracks the stock price or its volatility
+- A contract named **`RiskEngine`** — rejected for narrative reasons, not technical ones. It sounds like a credit desk deciding whether you deserve money. Risk in Pledge is just: LTV/liquidation ratio per stock, HF, oracle staleness, and how much USDG we seeded.
+- Pledge minting its own USDG
+- A second worthless governance token
+- Claiming "audited" / "licensed lender" / "legal in your country" / "tax = 0" in any copy
 
-**Explicitly not MVP (do not describe as live):**
+### What this means for your audit
 
-- Buyback-and-burn.
-- On-chain Governor / vePLG voting (UI preview only).
-- PSM contract.
-- Production cross-chain bridge.
-- User LPs earning borrow interest (Aave-style supply).
-- Utilization-based APR (planned direction, not coded as auto).
-- Term-loan seizure (rejected, not “coming later”).
-- Second valueless unswappable governance token (rejected).
-- Interest that tracks the stock price (rejected).
+If you find *"there is no mechanism to force a user to pay"* — that's a **feature**, not a finding. The actual bugs are the inverse:
 
-**Likely next (after MVP, if asked “what’s next?”):**
+- A **healthy** vault can lose its collateral → **critical**
+- An **unhealthy** vault cannot be liquidated → **critical**
+- Interest can be avoided, or charged where it shouldn't be → **high**
+- A price increase makes the user's position worse → **critical** (breaks statement 5)
 
-- Raise stability fee if team float is the bottleneck (e.g. toward ~6% APR) — **same model**, just the number.
-- Redeploy vault so repay receipt is fully on-chain (`getRepayBreakdown`).
-- Fix analytics lookback / indexer lag.
-- Align USD display rounding with the ticker.
-- LP / PSM so the team is not the only USDG source.
-- Lock PLG → vePLG + timelock.
+## 4. How Pledge makes money
+
+Two revenue lines, both on-chain, both simple:
+
+| Line | Mechanism | Where it lands today |
+|---|---|---|
+| **Origination fee** | Charged once at `borrow`. Deducted from the payout; the recorded debt is the **gross** amount. | `PledgeSurplusBuffer` — transferred directly in `borrow()` |
+| **Stability fee (interest)** | Time-based APR, accrues on the debt, collected when the user repays | **Stays in the vault's USDG inventory** — never swept to the surplus buffer |
+
+That asymmetry is worth your attention (see §11 and K-9). Interest revenue is currently indistinguishable from lendable principal sitting in the vault.
+
+There is **no** protocol revenue from liquidations (the bonus goes entirely to the liquidator), and **no** revenue from the stability pool.
+
+## 5. Where the project is going (direction)
+
+This matters for the audit because we're asking you to review code we're about to change.
+
+### 5.1 Right now — get one real loan to work on mainnet
+
+Mainnet is currently an address with **zero USDG inventory**. The honest status sentence we use internally and externally is: *"vault staged on 4663, not public-ready."* Before anything else:
+
+1. Oracle at `0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9` is **`PledgeChainlinkOracle`** (manifest + `AUDIT.md`). Default `maxStaleness` in code is 24h; mainnet is **4 days** (`345600`)
+2. Seed a **small** amount of 6-decimal USDG into the vault proxy **`0x0dfd39…`**
+3. Run the four-step smoke test ourselves: deposit → borrow → `getRepayBreakdown` → repay → withdraw
+4. If any step fails, stop and fix
+
+### 5.2 Next — one vault upgrade, before anyone else deposits
+
+We want **one** `upgradeToAndCall` on proxy **`0x0dfd39…`**, not `0x1757…`. The implementation in this repo already contains:
+
+- **Pause fix (K-1):** `active=false` blocks only `deposit`/`borrow`; repay/withdraw/liquidate stay open
+- **`setMarketParams` (K-3)** with bounds, events, and non-retroactive APR checkpoints
+- **K-10:** `lastAccrual` is not reset when truncated interest is 0
+- **K-2 Option B:** the stability pool is USDG parking; `payDebt` reverts and is **not** wired into `liquidate`
+
+Do not broadcast to chain 4663 unless we ask.
+
+### 5.3 Then — app, then a soft open
+
+Point the hosted app at chain 4663, verify the 6-decimal paths end to end in a browser, strip the marketing copy that promises things the contracts don't do (debt ceilings, market close, pool backstop). Then open with a **small** inventory and a liquidator wallet that we fund ourselves, because there is no liquidation bot.
+
+### 5.4 Later — the actual roadmap
+
+| Direction | What it means | Why |
+|---|---|---|
+| More markets | **8 markets already live** (NVDA, SPY, AAPL, QQQ, MSFT, AMZN, META, GOOGL). Add further names only after the feed is verified | Every market is a new oracle trust assumption |
+| Raise APR parameters when float is thin | Same mechanism, different number | Rationing scarce inventory by price, not by rejecting users |
+| **LP / PSM** so USDG doesn't only come from treasury | Third parties supply the lendable USDG | Treasury-funded inventory doesn't scale |
+| **PLG → vePLG** lock + timelock governance | Real governance over parameters | Single-EOA ownership is the biggest risk in the system |
+| **Multisig owner** before meaningful TVL | Removes the single-key failure mode | See §12 |
+
+**What we are deliberately *not* becoming:** an Aave-style supply/borrow market with pooled lenders, a bank, a broker, or anything with credit underwriting. If a recommendation of yours implies one of those, flag it but give us an alternative that fits §3.
+
+### 5.5 Explicitly not now
+
+Governance contracts, PSM, mainnet staking, a production bridge, an on-chain debt ceiling, automated market-hours pausing, token buybacks, and any promise of dates, audits, or yield.
+
+## 6. Build history (how we got here)
+
+Useful context for judging code maturity.
+
+### Testnet phase — the core actually works
+
+The CDP was written in Foundry (`src/` at the repo root): vault, surplus buffer, stability pool, oracle, staking, a test bridge, mock ERC-20s, mock price feeds. This checkout does **not** contain `web/`, `AGENTS.md`, or `docs/product.md` — use [`AUDIT.md`](AUDIT.md) and [`MAINNET_SCRIPT_AUDIT.md`](MAINNET_SCRIPT_AUDIT.md) for operational notes.
+
+The credit narrative was locked into `docs/product.md` and `.cursor/rules/credit-policy.mdc` during this phase — perpetual, receipt-style repayment, HF-only liquidation. Governance and PSM exist **only as preview UI**; there is no Governor and no PSM contract. The bridge is an EIP-712 attestation flow on the RH testnet, **not** a production bridge.
+
+### Mainnet phase (chain 4663) — harder than expected
+
+Mock USDG was replaced with **Paxos USDG at 6 decimals**, and the app learned to read `usdgDecimals` from its deployment manifest instead of assuming 18. Collateral became real chain stock tokens.
+
+The **first** mainnet vault (`0xf486…`) was **not** behind a proxy and had **no `withdrawLiquidity`**. About **10 USDG is permanently stuck** in it. We paused its market after draining what we could. We are not going to try to recover it, and it must never be treated as the live vault again.
+
+That mistake produced the standing rule: **every protocol deploy must be an ERC1967 proxy** (`.cursor/rules/proxy-deploys.mdc`). All protocol contracts were converted to UUPS via `PledgeUupsOwnable`.
+
+Deploying on 4663 was genuinely difficult — gas estimation, `maxFeePerGas`, and a single `--gas-limit` blocking subsequent transactions. We had to split deployment into `DeployVaultImplMainnet` → `DeployVaultProxyMainnet` → `ConfigureProxiedVaultMainnet`.
+
+Canonical live vault (this repo): proxy **`0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62`**. **Eight** markets are registered (NVDA, SPY, AAPL, QQQ, MSFT, AMZN, META, GOOGL). Scripts call `registerMarket(..., 500, 120, 50)` which is **`liqBonusBps=500` (5%), `stabilityFeeAprBps=120` (1.2%), `originationFeeBps=50` (0.5%)** — not the reverse. Oracle is `PledgeChainlinkOracle` at `0x195287cb…`. Surplus buffer and stability pool remain the old unproxied contracts.
+
+`0x1757a7BD9078001adD29d98Ba712DA7ba154C1AE` is hardcoded in `script/ConfigureProxiedVaultMainnet.s.sol`; [`MAINNET_SCRIPT_AUDIT.md`](MAINNET_SCRIPT_AUDIT.md) marks that script **unsafe**. Do not upgrade or seed `0x1757…`.
+
+Verification note: Blockscout's API on this chain sits behind Cloudflare, so `forge verify-contract` fails against it. We verified via **Sourcify** instead (exact match).
+
+### Deliberately not built yet
+
+Mainnet staking, bridge, governance, PSM. Audit. Multisig. Repo CI. Wiring the pool into liquidation (K-2 chose **not** to — it is parking only).
 
 ---
 
-## 1. One-sentence pitch
+# PART II — THE AUDIT
 
-Pledge Finance lets holders of tokenized equities and ETFs on Robinhood Chain **borrow USDG without selling their shares**. Keep the upside. Pay interest when you repay. Liquidation only if the position becomes unsafe.
+## 7. TL;DR for the auditor
 
----
-
-## 2. What Pledge is / is not
-
-| Pledge **is** | Pledge **is not** |
+| | |
 |---|---|
-| An overcollateralized CDP (collateralized debt position) | A share sale, broker, or prime brokerage |
-| Isolated vaults: one user × one collateral asset × one USDG debt | Cross-margin across all stocks in one account |
-| A lender of **existing** USDG sitting in the vault | A minter of a new stablecoin |
-| Perpetual credit: no due date, no monthly bill | A term loan / pawn shop with seizure at maturity |
-| Liquidation only when health factor **< 1.00** | A collections desk that seizes healthy vaults |
-| Testnet: mock USDG + mock m-tokens | Mainnet-ready Paxos USDG + real stock tokens until those rails are live |
+| Chain | Robinhood Chain **mainnet 4663** (staged), **testnet 46630** (public testers) |
+| Framework | Foundry, `solc 0.8.24`, optimizer 200 runs, `via_ir = false`, OpenZeppelin **5.0.2** (vendored in `lib/`) |
+| Upgradeability | **UUPS** / ERC1967 proxy for all protocol contracts. Owner = **one EOA**, no timelock |
+| Core in scope | `PledgeVaultManager`, `VaultMath`, `PledgeUupsOwnable`, `PledgeOracle`, `PledgeChainlinkOracle`, `PledgeSurplusBuffer`, `PledgeStabilityPool` |
+| Core size | ~900 lines of Solidity total. Small enough to read in a day |
+| Live vault | proxy `0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62` (canonical). Do **not** use `0x1757…` |
+| USDG inventory in vault | **0** — `borrow` reverts with `InsufficientLiquidity` |
+| What worries us most | (1) upgrade/storage layout on the next `upgradeToAndCall`, (2) the blanket trust in `getPrice` returning 18 decimals, (3) single-EOA owner |
 
-**Narrative we protect (do not break in product or copy):**
+### Hard rules while auditing
 
-- You are **not selling** the shares.
-- There is **no loan term**.
-- There is **no seizure of a healthy position**.
-- Interest **accrues with time** and is paid **at repayment**.
-- A rising share price is **your** upside. The borrow APR does **not** go up because the stock went up.
+1. **Never broadcast a transaction to mainnet 4663.** Fork tests and dry runs only. Broadcasting happens only if we ask explicitly.
+2. **Never commit `.env`** or any private key. That file has real contents on our machines; you don't need it.
+3. Audit from the repo root (`src/`, `test/`, `script/`). There is no `contracts/` or `contracts-github/` folder here.
+4. Don't propose anything that breaks §3. If a finding's natural fix is "add a term and seize", write the finding, then give us an alternative that fits.
 
----
+## 8. Setup, ten minutes
 
-## 3. Who it is for
+```bash
+git clone <repo> && cd pladge-smartcontract
 
-| Persona | Job to be done |
+# Solidity — lib/ is vendored (OZ 5.0.2 + forge-std), no forge install needed
+forge build
+forge test -vv          # must be green before you start
+```
+
+Cursor rules that auto-load (read them so you know the team's constraints):
+
+- `.cursor/rules/pledge-context.mdc` → pointer to `AGENTS.md`
+- `.cursor/rules/credit-policy.mdc` → perpetual, HF-only, time-based APR
+- `.cursor/rules/proxy-deploys.mdc` → every protocol deploy is an ERC1967 proxy
+- `.cursor/rules/pledge-ui.mdc` → the `/borrow/*` design system
+
+Companion documents:
+
+| File | Contents |
 |---|---|
-| Equity holder | Unlock USD cashflow without selling NVDA / AAPL / SPY exposure — **global**, on Robinhood Chain |
-| USDG holder / pool depositor | Park USDG in the Stability Pool; earn liquidation spread if vaults blow up |
-| PLG holder | Stake for rewards today; later lock for vote-escrow governance |
-| Liquidator | Buy distressed collateral at a bonus by repaying USDG debt |
-| Operator / team | Seed vault USDG, sync oracles, set market params, run Price Admin on testnet |
+[`AUDIT.md`](AUDIT.md) | Mainnet audit scope |
+[`MAINNET_SCRIPT_AUDIT.md`](MAINNET_SCRIPT_AUDIT.md) | Which scripts are safe vs unsafe on 4663 |
+[`deployments/4663.json`](deployments/4663.json) | Canonical live addresses and 8 markets |
+[`README.md`](README.md) | Integrator-facing architecture and parameters |
 
----
+## 9. Architecture and money flow
 
-## 4. Networks
+### 9.1 Two USDG pots — never conflate them
 
-| | Testnet | Mainnet (target) |
+| Pot | Contract | Role |
 |---|---|---|
-| Chain | Robinhood Chain Testnet | Robinhood Chain |
-| Chain ID | **46630** | **4663** |
-| RPC | `https://rpc.testnet.chain.robinhood.com` | `https://rpc.mainnet.chain.robinhood.com` |
-| Explorer | `https://explorer.testnet.chain.robinhood.com` | `https://robinhoodchain.blockscout.com` |
-| USDG | Mock ERC-20, **18 decimals** | Paxos USDG `0x5fc5…d168`, **6 decimals** |
-| Collateral | Mock `mNVDA`, `mAAPL`, … | Real tokenized equities when listed |
-| Oracle | MockChainlinkFeed + `PledgeOracle` sync | `PledgeChainlinkOracle` + production feeds |
-| Faucet | Live (48h / token) | Off |
-| Manifest | `web/src/lib/deployments/46630.json` | `web/src/lib/deployments/4663.json` |
-| Go-live | Live now | **Target ~5 September 2026** (team-stated; can slip). Confirm on official channels. |
+| **Vault inventory** | `PledgeVaultManager` | **The only source of borrowable USDG.** Filled by `fundLiquidity` (treasury) and by user repayments |
+| **Stability pool** | `PledgeStabilityPool` | **USDG parking only.** Not a liquidation backstop. `payDebt` reverts (`PayDebtUnimplemented`) |
 
-Frontend chain is selected with `NEXT_PUBLIC_PLEDGE_CHAIN_ID`.
+`PledgeVaultManager.liquidate()` pulls USDG from the **liquidator's wallet**. Do not wire `payDebt` until offset accounting exists (K-2 Option B).
 
----
+If the vault inventory is empty, `borrow` reverts. Existing loans are **not** force-closed, and an empty pool does **not** block borrowing.
 
-## 5. User journeys
+### 9.2 User flow
 
-### 5.1 Happy path — borrow and return shares
+```
+deposit(collateral, amt)        equity token → vault
+borrow(collateral, amt)         debt += amt (GROSS)
+                                user receives amt − originationFee
+                                fee → PledgeSurplusBuffer
+repay(collateral, amt)          interest first, then principal
+                                USDG returns to inventory
+withdraw(collateral, amt)       allowed while HF stays ≥ 1
+liquidate(user, collateral)     only when HF < 1; liquidator pays the FULL
+                                debt from their own wallet, receives
+                                collateral + bonus
+```
 
-1. Connect wallet on Robinhood Chain (testnet: 46630).
-2. Get gas ETH (network faucet).
-3. Testnet: claim mock shares + mock USDG at `/borrow/faucet`.
-4. **Deposit** mAAPL (etc.) into the vault. Shares leave the wallet and lock in `PledgeVaultManager`.
-5. **Borrow** USDG up to the market max LTV. Origination fee is taken immediately; user receives `amount − fee`; debt recorded is the **gross** amount.
-6. Use USDG (hold, pool, transfer). Shares still belong to the user as a vault position.
-7. **Repay** principal + accrued interest (receipt shows the split).
-8. **Withdraw** shares back to the wallet.
+Holding longer means more interest. That is the **only** pressure on a healthy vault. Not seizure.
 
-You can repay in part. Interest is paid **first**, then principal.
+### 9.3 Fee routing (note the asymmetry)
 
-### 5.2 Hold for years
+- **Origination fee** → `usdg.safeTransfer(address(surplusBuffer), fee)` inside `borrow()`. A plain transfer, **not** `surplusBuffer.receiveFee()`, so the `FeeReceived` event **never fires** in production.
+- **Stability fee (interest)** → repaid into the vault and **left in inventory**, never swept to the surplus buffer. The owner would have to call `withdrawLiquidity` manually, and there is no way to distinguish interest revenue from lendable principal.
 
-Allowed. No due date.
+Intentional or not? **We want your opinion.** Revenue and inventory accounting are not separated today.
 
-- Stock **up** → collateral value up → health factor **improves**. Interest still accrues.
-- Stock **flat** → HF slowly declines as debt grows with interest.
-- Stock **down** → HF falls faster; if HF < 1.00 the vault can be liquidated.
+## 10. File map (in scope vs out of scope)
 
-Example at **1.2% APR** (current on-chain testnet param), 214 USDG principal:
+```
+src/
+  core/
+    PledgeVaultManager.sol      ← THE CORE. priority #1
+    PledgeSurplusBuffer.sol     ← fee treasury
+    PledgeStabilityPool.sol     ← USDG parking (not a backstop; payDebt reverts)
+    PledgeStaking.sol           ← testnet only (OUT of mainnet scope)
+    PledgeTestnetBridge.sol     ← testnet only (OUT of mainnet scope)
+  oracle/
+    PledgeOracle.sol            ← manual prices, owner setPrice (testnet)
+    PledgeChainlinkOracle.sol   ← production AggregatorV3 adapter
+  libraries/
+    VaultMath.sol               ← ALL the math. priority #2
+  upgrade/
+    PledgeUupsOwnable.sol       ← owner + _authorizeUpgrade. priority #3
+  interfaces/IOracle.sol
+  mocks/                        ← MockERC20, MockChainlinkFeed, TestnetEthFaucet (OUT)
+  PledgeProtocol.sol            ← string constants only
+script/                         ← deploy/ops scripts. review the *Mainnet*.s.sol ones
+test/                           ← Foundry tests
+lib/                            ← OZ 5.0.2 + forge-std (vendored, tracked in git)
+deployments/4663.json           ← canonical mainnet manifest
+```
 
-| Time borrowed | Interest (simple, if untouched) | Total due |
+### Priorities we're asking for
+
+| Priority | Target | Why |
 |---|---|---|
-| 1 month | ~0.21 | ~214.2 |
-| 8 months | ~1.71 | ~215.7 |
-| 2 years | ~5.14 | ~219.1 |
-| 4 years | ~10.3 | ~224.3 |
+| **P0** | `PledgeVaultManager.sol` + `VaultMath.sol` | All user money flows through here |
+| **P0** | `PledgeUupsOwnable.sol` + storage layout for the next upgrade | We are about to `upgradeToAndCall` on a live proxy |
+| **P1** | `PledgeOracle` / `PledgeChainlinkOracle` | The vault trusts `getPrice` completely |
+| **P1** | `PledgeSurplusBuffer`, `PledgeStabilityPool` | Treasury and depositor funds |
+| **P1** | Behavior at **6-decimal** USDG (mainnet) vs 18 (testnet) | Rounding and truncation |
+| **P2** | `script/*Mainnet.s.sol` | A wrong parameter is permanent — there is no setter yet |
+| **Out** | Staking, bridge, faucet, mocks | Testnet-only, never going to 4663 |
 
-A **6% APR** (product direction if team USDG is the float) would be ~5× those interest numbers. The **mechanism** does not change: still accrued, still paid at repay, still no monthly bill.
+## 11. `PledgeVaultManager` — full walkthrough
 
-### 5.3 Get liquidated (test)
+Path: `src/core/PledgeVaultManager.sol`. Inherits `PledgeUupsOwnable` and `ReentrancyGuard`.
 
-1. Open a **small** borrow (faucet USDG for liquidators is limited).
-2. Borrow near max LTV so HF is close to 1.00.
-3. Operator drops the mock feed (~25%+ on a conservative book) and **syncs** the vault oracle.
-4. A **second wallet** with USDG ≥ full debt opens `/borrow/liquidator` and liquidates.
-5. UI blocks **self-liquidation**.
+### 11.1 Immutables and storage
 
----
+```39:50:src/core/PledgeVaultManager.sol
+    IERC20 public immutable usdg;
+    uint8 public immutable usdgDecimals;
+    PledgeSurplusBuffer public immutable surplusBuffer;
 
-## 6. Credit policy (locked)
+    mapping(address collateral => Market) public markets;
+    mapping(address collateral => mapping(address user => Position)) public positions;
+    /// @dev Borrowed principal still outstanding (excludes accrued stability fee).
+    mapping(address collateral => mapping(address user => uint256)) public principalDebt;
+    /// @dev First borrow timestamp for the current debt cycle; 0 when fully repaid.
+    mapping(address collateral => mapping(address user => uint256)) public debtOpenedAt;
 
-These rules are also in `.cursor/rules/credit-policy.mdc`.
-
-1. **Perpetual.** No maturity. No “unpaid for N months → seize.”
-2. **No monthly USDG coupon.** Interest is not a calendar bill.
-3. **Repayment receipt** must show: principal, time borrowed, interest, total due.
-4. **APR is time-based only.** It must not track the equity’s price. Taxing upside breaks the narrative.
-5. **Liquidation = HF < 1.00 only.** Not a way to recycle team capital.
-6. Recycle USDG via: repayments, higher APR, utilization (later), LP/PSM (later) — **not** seizure of healthy vaults.
-
-**Rejected ideas (do not ship):**
-
-- Max tenor then confiscate shares while HF ≥ 1.
-- Mandatory monthly repayments (implies a penalty, which becomes seizure).
-- “Stock pumped so we raise your rate.”
-
----
-
-## 7. Protocol architecture
-
-```
-User wallet
-    │
-    ├─ PledgeVaultManager     CDP: deposit / borrow / repay / withdraw / liquidate
-    │       ├─ PledgeOracle   price used for LTV, HF, liquidation
-    │       ├─ USDG balance   **borrow liquidity** (seeded via fundLiquidity)
-    │       └─ PledgeSurplusBuffer   origination fees (USDG)
-    │
-    ├─ PledgeStabilityPool    **separate** USDG pot — liquidation backstop, not lend inventory
-    ├─ PledgeStaking          PLG / USDG stake → PLG rewards
-    ├─ PledgeTestnetBridge    attestation ingress (testnet only)
-    └─ Mock / real feeds      UI ticker; vault must be synced on testnet
+    address[] public marketList;
 ```
 
-**One vault manager for all markets** (not one contract per stock). Positions are keyed `(collateral, user)`.
+Important: `usdg`, `usdgDecimals`, and `surplusBuffer` are **immutable**, so they live in the implementation bytecode, **not** in proxy storage. Replacing the surplus buffer therefore requires a **new implementation plus an upgrade**, not a setter. And `usdgDecimals` is read via `_decimals(usdg_)` **in the implementation's constructor**, which means the implementation must be deployed with the correct USDG address for its chain.
 
-### 7.1 Two USDG pots (do not confuse)
+The `Market` struct:
 
-| Pot | Contract | Who fills it | Who takes it out | If empty |
-|---|---|---|---|---|
-| **Vault liquidity** | `PledgeVaultManager` USDG balance | Team/treasury `fundLiquidity()`, plus user **repays** | Borrowers | **New borrows fail** (`InsufficientLiquidity`). Existing loans stay. Pool withdrawals unaffected. |
-| **Stability Pool** | `PledgeStabilityPool` | Users depositing USDG | Those users withdrawing; (designed) liquidation `payDebt` | Depositors cannot withdraw more than pool holdings. **Does not fund borrows.** |
-
-Current `liquidate()` pays from the **liquidator’s wallet**, not from the pool. Pool `payDebt` exists but is not wired in the live liquidation path yet. Docs sometimes say “pool covers debt”; treat that as the **intended** Liquity-style path, not the exact testnet path today.
-
-This is **not** fractional-reserve banking. Pool USDG is not lent to borrowers.
-
----
-
-## 8. Math (on-chain)
-
-Constants: `BPS = 10_000`, `WAD = 1e18`.
-
-### 8.1 Max debt
-
-```
-max_debt = collateral_usd × maxLtvBps / 10_000
+```22:31:src/core/PledgeVaultManager.sol
+    struct Market {
+        address collateral;
+        address oracle;
+        uint16 maxLtvBps;
+        uint16 liqRatioBps;
+        uint16 liqBonusBps;
+        uint16 stabilityFeeAprBps;
+        uint16 originationFeeBps;
+        bool active;
+    }
 ```
 
-Example: $10,000 mNVDA, 60% LTV → **6,000 USDG** max.
+### 11.2 Functions and access control
 
-Borrowing at the cap leaves almost **no** price buffer (HF ≈ 1.00).
-
-### 8.2 Health factor
-
-On-chain (`VaultMath.healthFactor`):
-
-```
-HF = collateral_usd × 10_000 / (debt_usd × liqRatioBps)
-```
-
-`liqRatioBps` is a **minimum collateralization ratio** (16600 = 166%), **not** an Aave-style 80% liquidation threshold.
-
-Liquidatable when **HF < 1**.
-
-**Worked example (tester book):** 2 mAAPL, price $219.80, debt 214 USDG, liq ratio 153%:
-
-```
-collateral = 439.60
-HF = 439.60 / (214 × 1.53) ≈ 1.34
-```
-
-Raw `439.60 / 214 ≈ 2.05` is **CR**, not HF. UI HF of 1.34 is correct.
-
-### 8.3 Interest (core product — longer hold = more interest)
-
-This is the mechanism we chose instead of seizure or a due date.
-
-**User-facing rule**
-
-- You do **not** send USDG every month.
-- While the loan is open, a **stability fee APR** ticks in the background.
-- When you tap **Repay**, the screen is a **receipt**:
-  - Principal (what you borrowed, gross)
-  - Time borrowed (e.g. 8 months 12 days)
-  - Interest accrued
-  - **Total due**
-- Stay 1 month → small interest. Stay 2 years → more interest. That is the only “pressure” to repay a healthy vault.
-
-**On-chain formula** (simple / linear per accrual window):
-
-```
-interest = debt × aprBps × elapsed / (365 days × 10_000)
-```
-
-Applied when the user (or a liquidator) interacts: deposit, withdraw, borrow, repay, liquidate. If they go silent, the next touch applies the whole elapsed window on **stored debt** (not continuously compounded every block).
-
-Repay **interest first**, then principal. Full repay resets the debt clock (`debtOpenedAt = 0`).
-
-**APR must not follow the stock price.** A rising share is the user’s upside.
-
-**Worked receipts — 214 USDG principal**
-
-At **1.2% APR** (live testnet param today):
-
-| Time borrowed | Interest | Total due |
-|---|---|---|
-| 1 month | ~0.21 | ~214.2 |
-| 8 months | ~1.71 | ~215.7 |
-| 2 years | ~5.14 | ~219.1 |
-| 4 years | ~10.3 | ~224.3 |
-
-At **~6% APR** (product direction if team USDG is the float — **not** live until params change):
-
-| Time borrowed | Interest | Total due |
-|---|---|---|
-| 1 month | ~1.07 | ~215.1 |
-| 8 months | ~8.6 | ~222.6 |
-| 2 years | ~25.7 | ~239.7 |
-| 4 years | ~51.4 | ~265.4 |
-
-If asked “what is the rate today?” → **1.2% APR on current testnet markets**, unless a market was registered with a different `stabilityFeeAprBps`. Do not tell users 6% is already live.
-
-### 8.4 Origination
-
-```
-fee = borrow_amount × originationFeeBps / 10_000
-payout = borrow_amount − fee
-debt += borrow_amount
-```
-
-Typical testnet: **0.5%**. Fee USDG goes to **Surplus Buffer**. User still owes the gross amount.
-
-### 8.5 Liquidation seize
-
-Liquidator pays **full debt** (after accrual), receives:
-
-```
-collateral_seized = debt × (1 + liqBonusBps/10_000) / price
-```
-
-Capped at the vault’s collateral. Typical bonus **5%** (`500` bps). Remainder stays in the user’s vault. Self-liquidation reverts.
-
----
-
-## 9. Markets (testnet params)
-
-| Market | Max LTV | Liq. ratio | Meaning at max borrow |
+| Function | Access | Guards | Notes |
 |---|---|---|---|
-| mSPY | 75% | 133% | Highest LTV; tightest buffer |
-| mQQQ | 70% | 143% | |
-| mAAPL / mMSFT | 65% | 153% | |
-| mMETA | 62% | 161% | |
-| mNVDA | 60% | 166% | |
-| mAMZN | 58% | 172% | Lowest LTV; widest CR |
-| mGOOGL | — | — | **Pending**, not deployed |
+| `registerMarket` | `onlyOwner` | — | Bounds via `_validateMarketParams` |
+| `setMarketActive` | `onlyOwner` | — | `active=false` blocks **only** deposit/borrow (K-1 fixed in this tree) |
+| `setMarketOracle` | `onlyOwner` | — | Owner can swap the oracle at any time |
+| `setMarketParams` | `onlyOwner` | — | LTV/liq/fees; APR change is checkpointed (not retroactive) |
+| `fundLiquidity` | **public** | `nonReentrant` | Anyone may seed. No `amount != 0` check |
+| `withdrawLiquidity` | `onlyOwner` | `nonReentrant` | Owner can pull the **entire** USDG inventory |
+| `deposit` | public | `nonReentrant`, `_requireActiveMarket` | |
+| `withdraw` | public | `nonReentrant`, `_requireKnownMarket`, `_requireHealthy` | Works on a paused market |
+| `borrow` | public | `nonReentrant`, `_requireActiveMarket`, LTV, liquidity | |
+| `repay` | public | `nonReentrant`, `_requireKnownMarket` | Works on a paused market |
+| `liquidate` | public | `nonReentrant`, `_requireKnownMarket`, `HF < 1`, anti-self-liq | Full debt only, no partial; works on a paused market |
 
-Shared testnet fees (unless a market was registered differently):
+Views: `getHealthFactor`, `getBorrowable`, `getMarketCount`, `getRepayBreakdown`.
 
-| Fee | Param | Typical |
-|---|---|---|
-| Stability fee | `stabilityFeeAprBps` | **1.2% APR** (`120`) |
-| Origination | `originationFeeBps` | **0.5%** (`50`) |
-| Liq bonus | `liqBonusBps` | **5%** (`500`) |
+### 11.3 `borrow` — watch the ordering of checks
 
-Product note: 1.2% is cheap if **team USDG** is the lend float. A later raise (e.g. 6% APR) is a parameter change, not a new credit model. Utilization-based rates are a later upgrade.
+```187:219:src/core/PledgeVaultManager.sol
+    function borrow(address collateral, uint256 amount) external nonReentrant {
+        if (amount == 0) revert ZeroAmount();
+        Market memory market = _requireActiveMarket(collateral);
 
----
+        Position storage pos = positions[collateral][msg.sender];
+        _accrue(pos, market.stabilityFeeAprBps);
 
-## 10. USDG supply — the capital problem
+        uint256 fee = (amount * market.originationFeeBps) / VaultMath.BPS;
+        uint256 payout = amount - fee;
+        require(payout > 0, "fee exceeds amount");
 
-Pledge **does not mint USDG** on borrow. Docs:
+        uint256 newDebt = pos.debt + amount;
+        uint256 collateralUsd = _collateralUsd(pos.collateral, collateral, market.oracle);
+        uint256 newDebtUsd = VaultMath.toUsdScale(newDebt, usdgDecimals);
+        if (newDebtUsd > VaultMath.maxDebt(collateralUsd, market.maxLtvBps)) revert ExceedsMaxLtv();
+        if (usdg.balanceOf(address(this)) < amount) revert InsufficientLiquidity();
+        // ... principal / debtOpenedAt bookkeeping ...
+        usdg.safeTransfer(msg.sender, payout);
+        if (fee > 0) usdg.safeTransfer(address(surplusBuffer), fee);
+        emit Borrowed(msg.sender, collateral, payout, fee);
+    }
+```
+
+Please verify:
+
+- **Recorded debt is the gross `amount`** while the user only receives `amount − fee`. That's intentional (the fee is the cost of opening the loan) and the LTV check uses the gross amount. Confirm there is no path where a user's payout can exceed their recorded debt.
+- The liquidity check uses `amount` (gross) while the transfers out total `payout + fee = amount`. Consistent — but `balanceOf(address(this))` also counts USDG that is economically **protocol interest revenue**. There's no segregation.
+- `emit Borrowed(..., payout, fee)` reports the **payout**, not the debt increase. Indexers and the frontend could compute total debt incorrectly from events. Cross-check `web/src/lib/indexer/`.
+
+### 11.4 `repay` and `_applyPrincipalRepay` — the subtlest logic
+
+```335:356:src/core/PledgeVaultManager.sol
+    function _applyPrincipalRepay(
+        address collateral,
+        address user,
+        Position storage pos,
+        uint256 repayAmount
+    ) internal {
+        uint256 prin = principalDebt[collateral][user];
+        if (prin == 0) prin = pos.debt;
+        if (prin > pos.debt) prin = pos.debt;
+
+        uint256 interestOwed = pos.debt - prin;
+        uint256 fromPrincipal = repayAmount > interestOwed ? repayAmount - interestOwed : 0;
+        if (fromPrincipal > prin) fromPrincipal = prin;
+
+        pos.debt -= repayAmount;
+        if (pos.debt == 0) {
+            principalDebt[collateral][user] = 0;
+            debtOpenedAt[collateral][user] = 0;
+        } else {
+            principalDebt[collateral][user] = prin - fromPrincipal;
+        }
+    }
+```
+
+Specific things to check:
+
+- Is the invariant `principalDebt ≤ pos.debt` actually preserved across **every** path — repeated `borrow`, many partial repayments, after a large `_accrue`, after `liquidate`?
+- The `prin == 0` fallback treats the whole position as principal. That covers legacy positions from before this bookkeeping existed — but can it be used to **reset** accrued interest?
+- `pos.debt -= repayAmount` relies on the caller clamping (`amount > pos.debt ? pos.debt : amount`). Confirm no underflow path.
+- Can accrued interest be "lost" if a user partially repays and then borrows again, given that `principalDebt += amount` while the interest component is already folded into `pos.debt`?
+
+### 11.5 `liquidate` — full debt, no partial
+
+```236:265:src/core/PledgeVaultManager.sol
+    function liquidate(address user, address collateral) external nonReentrant {
+        if (msg.sender == user) revert SelfLiquidationNotAllowed();
+        Market memory market = _requireActiveMarket(collateral);
+        Position storage pos = positions[collateral][user];
+        _accrue(pos, market.stabilityFeeAprBps);
+
+        uint256 collateralUsd = _collateralUsd(pos.collateral, collateral, market.oracle);
+        uint256 debtUsd = VaultMath.toUsdScale(pos.debt, usdgDecimals);
+        uint256 hf = VaultMath.healthFactor(collateralUsd, debtUsd, market.liqRatioBps);
+        if (hf >= HF_WAD) revert NotLiquidatable();
+
+        uint256 debt = pos.debt;
+        uint256 price = IOracle(market.oracle).getPrice(collateral);
+        uint8 decimals = _decimals(collateral);
+
+        uint256 collateralToSeize =
+            (debtUsd * (VaultMath.BPS + market.liqBonusBps) * (10 ** uint256(decimals))) / (price * VaultMath.BPS);
+        if (collateralToSeize > pos.collateral) collateralToSeize = pos.collateral;
+
+        pos.debt = 0;
+        principalDebt[collateral][user] = 0;
+        debtOpenedAt[collateral][user] = 0;
+        pos.collateral -= collateralToSeize;
+
+        usdg.safeTransferFrom(msg.sender, address(this), debt);
+        IERC20(collateral).safeTransfer(msg.sender, collateralToSeize);
+        emit Liquidated(user, msg.sender, collateral, debt, collateralToSeize);
+    }
+```
+
+What we know and want you to quantify:
+
+- **No partial liquidation.** The liquidator must hold USDG equal to the **full debt**. Large positions may have no one able to liquidate them, so bad debt persists. There is no liquidation bot.
+- If `collateralToSeize` is **capped** at `pos.collateral`, the liquidator still pays the full debt but receives less collateral, so the rational choice is **not** to liquidate — and the insolvent position stays open. Please compute the price at which liquidation stops being profitable. Mainnet `liqBonusBps` is **500 (5%)** (see K-4/K-5 correction).
+- `getPrice` is called **twice** (once inside `_collateralUsd`, once directly). Chainlink can't change mid-transaction, but the manual `PledgeOracle` can be updated by the owner — is there an inconsistency window?
+- After liquidation, **leftover collateral remains in the user's position**. Confirm the user can still `withdraw` it (debt is 0, so HF is `max`).
+- `_accrue` before the HF check means interest alone can push a position under HF 1 with no price movement. That is **intentional** (interest is the only pressure). Confirm interest can't be applied twice in one transaction.
+
+### 11.6 `_accrue` — the finding we suspect most
+
+```328:332:src/core/PledgeVaultManager.sol
+    function _accrue(Position storage pos, uint16 stabilityFeeAprBps) internal {
+        uint256 interest = VaultMath.accrueInterest(pos.debt, stabilityFeeAprBps, pos.lastAccrual);
+        if (interest > 0) pos.debt += interest;
+        pos.lastAccrual = block.timestamp;
+    }
+```
+
+`lastAccrual` was reset **unconditionally**, including when `interest == 0` due to truncation. **Fixed in this tree:** `_accrue` returns without updating `lastAccrual` when `interest == 0` (debt=0 still stamps the clock). Covered by `test_sixDecimalUsdgGrindDoesNotResetLastAccrual`.
+
+The math at **6-decimal** USDG (mainnet) with a 120 bps APR:
 
 ```
-USDG_borrowed = Σ debt + fees     // borrowed, not protocol-minted
+interest = debt * 120 * elapsed / (365 days * 10_000)
+         = debt * 120 * elapsed / 3.1536e11
+
+interest > 0  ⟺  elapsed > 3.1536e11 / (debt * 120)
 ```
 
-So **max simultaneous loans ≈ USDG sitting in the vault**.
+- debt = 2 USDG (`2_000_000` units) → `elapsed > ~1314 s` (≈ 22 minutes)
+- debt = 100 USDG (`100_000_000` units) → `elapsed > ~26 s`
+- debt = 10,000 USDG → `elapsed > ~0.26 s` (so every block already accrues)
 
-| Environment | Where USDG comes from |
-|---|---|
-| Testnet | Deployer mints mock USDG and `fundLiquidity()` (e.g. 500,000) |
-| Mainnet | Protocol must **source Paxos USDG** (buy / partner / LP / PSM) and seed the vault |
+Meaning: a user can call **any function that triggers `_accrue`** (e.g. `deposit(1 wei)`) just before the threshold, reset `lastAccrual`, and pay **zero interest indefinitely**. Economically viable for small positions on a cheap-gas chain.
 
-If demand > inventory: new `borrow` reverts. Old borrowers are **not** force-closed.
+Please confirm it, compute the break-even gas threshold, and propose a fix that doesn't violate §3. Candidates: store an `accruedRemainder`, or simply don't update `lastAccrual` when `interest == 0`.
 
-**How to scale without only team capital**
+Note that the suite now has 6-decimal borrow, liquidation, and grind tests. Default happy paths still use 18-decimal mock USDG.
 
-| Tool | Status | Effect |
+### 11.7 `_decimals` via `staticcall`
+
+```374:378:src/core/PledgeVaultManager.sol
+    function _decimals(address token) internal view returns (uint8) {
+        (bool ok, bytes memory data) = token.staticcall(abi.encodeWithSignature("decimals()"));
+        require(ok && data.length >= 32, "decimals");
+        return abi.decode(data, (uint8));
+    }
+```
+
+Called from `_collateralUsd` on every deposit/withdraw/borrow/repay/liquidate and on every view. Check the gas cost, tokens without `decimals()`, tokens returning a non-`uint8`, and whether caching is worthwhile.
+
+## 12. `VaultMath` — the complete math spec
+
+Path: `src/libraries/VaultMath.sol`. `WAD = 1e18`, `BPS = 10_000`.
+
+| Function | Formula | Notes |
 |---|---|---|
-| Treasury seed | Live (`fundLiquidity`, permissionless send, **no LP receipt**) | Team/partners put USDG in |
-| Repay recycle | Live | USDG returns to vault |
-| Raise APR | Param (owner/governance) | Demand down, repay up |
-| Debt ceilings | Design / per-market LTV already limits size | One ticker cannot eat all USDG |
-| User LPs earn the stability fee | **Not live** | Market supplies the float |
-| PSM 1:1 other stables → USDG | **Preview UI only** | Inventory without team buying 100% |
-| Mint a Pledge stable | **Rejected for now** | Would not be Paxos USDG |
+| `collateralValue(amt, priceUsd, dec)` | `amt * priceUsd / 10**dec` | `priceUsd` **must be 18 dp**. Output is USD at 18 dp |
+| `toUsdScale(amt, dec)` | scale up/down to 18 dp | 6-dp USDG → `× 1e12` |
+| `fromUsdScale(usd, dec)` | back to native units | **truncates** when scaling down |
+| `maxDebt(collateralUsd, maxLtvBps)` | `collateralUsd * maxLtvBps / BPS` | USD at 18 dp |
+| `healthFactor(cUsd, dUsd, liqRatioBps)` | `cUsd * WAD * BPS / (dUsd * liqRatioBps)` | `dUsd == 0` → `type(uint256).max` |
+| `accrueInterest(debt, aprBps, lastAccrual)` | `debt * aprBps * elapsed / (365 days * BPS)` | **linear**, not compounding |
 
-`fundLiquidity` does **not** give the sender a claim token. USDG sent in is protocol inventory until borrowers repay.
+**`liqRatioBps` is not an Aave-style threshold.** It is a **minimum collateralization ratio**: `16600 = 166%`. A position is liquidatable **iff HF < 1e18**.
 
----
+Worked example (good starting point for unit tests):
 
-## 11. Tokens
+```
+collateral: 10 NVDA @ $500 = $5,000
+maxLtv 6000 (60%)  → max_debt = 3,000 USDG
+liqRatio 16600
 
-| Token | Role | Tradable? |
+borrow 3,000 → HF = 5000e18 * 1e18 * 1e4 / (3000e18 * 16600) = 1.0040e18   → HF ≈ 1.004
+price falls to $498       → HF ≈ 0.9999  → LIQUIDATABLE
+```
+
+The buffer at max LTV is only **0.4%**. That isn't a bug per se, but it means a user who borrows the maximum will be liquidatable within hours purely from interest. We'd like your opinion on whether `maxLtv` and `liqRatio` need more separation — for 60% LTV, `liqRatio` below 16666 would leave actual headroom.
+
+Things to check in the math:
+
+- Overflow in `collateralUsd * WAD * BPS`: needs `cUsd < ~1.16e55`. Check realistic bounds, since an 18-dp price times an 18-dp amount already gets large.
+- `collateralValue` truncates down, which lowers HF and favors the protocol. Confirm rounding is **always** conservative for the protocol, in every function.
+- `fromUsdScale` in `getBorrowable` truncates, so the user can't borrow the last unit. Safe — but confirm `borrow(getBorrowable())` **never** reverts with `ExceedsMaxLtv` (an off-by-one UX bug).
+- Interest is linear per touch: a long idle window is applied in one shot, with no compounding. Confirm no path folds interest into `principalDebt`, which would be hidden compounding.
+
+## 13. The oracle — a total trust dependency
+
+The vault **always** calls `IOracle(market.oracle).getPrice(collateral)` and expects **USD at 18 decimals**. Stale prices revert with `"ORACLE: stale"` (default `maxStaleness = 24 hours`).
+
+Two implementations exist:
+
+**`PledgeOracle`** (manual) — `prices[asset]` plus `updatedAt[asset]`, with `setPrice` gated by `onlyOwner`. The owner has full control over prices, so the owner can make any position liquidatable, or prevent liquidation. This is the single largest centralization risk in the system; please assign it a severity you consider fair.
+
+**`PledgeChainlinkOracle`** (an `AggregatorV3Interface` adapter) — `feeds[asset]`, normalizes `feedDecimals` to 18 dp, requires `answer > 0` and `block.timestamp - feedUpdatedAt <= maxStaleness`.
+
+To check:
+
+- `latestRoundData` is used without checking `answeredInRound >= roundId`. Does it matter here?
+- `maxStaleness` of **24 hours** for equities whose market closes on weekends: is 24h too loose (Friday's price used Monday morning) or too tight (a feed that stops updating over the weekend freezes the whole vault, including repay and withdraw)? This is a genuine open design question for us.
+- `getPrice` makes **two** external calls (`latestRoundData()` and `decimals()`) — a malicious or upgradeable feed is a manipulation vector.
+- `setMaxStaleness` has no bounds. The owner can set 100 years (stale prices treated as fresh) or 0 (everything frozen).
+- There is **no circuit breaker** for extreme price jumps. That's deliberate (we rejected a "RiskEngine"), but please document the consequence.
+
+**Operational fact:** the mainnet oracle at `0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9` **is** `PledgeChainlinkOracle` (`deployments/4663.json`, `AUDIT.md`). `maxStaleness` on mainnet is **4 days** (`345600`). Do not wire the manual `PledgeOracle` on 4663.
+
+Testnet has a different problem: the UI reads a **mock Chainlink feed** while the vault reads **`PledgeOracle` storage**. If the operator forgets to sync (`SyncTestnetOracleFromFeeds.s.sol`), the UI shows price A and transactions fail against price B.
+
+## 14. Upgradeability — where we most need your eyes
+
+`PledgeUupsOwnable` (`src/upgrade/PledgeUupsOwnable.sol`):
+
+```9:43:src/upgrade/PledgeUupsOwnable.sol
+abstract contract PledgeUupsOwnable is Initializable, UUPSUpgradeable {
+    address public owner;
+    // ...
+    function _disableAndMaybeSetOwner(address owner_) internal {
+        if (owner_ != address(0)) { owner = owner_; emit OwnershipTransferred(address(0), owner_); }
+        _disableInitializers();
+    }
+    function _initOwner(address owner_) internal {
+        if (owner_ == address(0)) revert ZeroAddress();
+        owner = owner_;
+        emit OwnershipTransferred(address(0), owner_);
+    }
+    function transferOwnership(address newOwner) external onlyOwner { /* ... */ }
+    function _authorizeUpgrade(address) internal override onlyOwner {}
+}
+```
+
+Please examine:
+
+1. **Storage layout and upgrade safety.** `owner` sits at slot 0 (OZ 5's `Initializable` and `UUPSUpgradeable` use ERC-7201 namespaced storage, so they don't occupy slot 0). There is **no `uint256[50] __gap`** anywhere. We intend to add storage variables in the next upgrade (§16). Map the current layout of `PledgeVaultManager` slot by slot and give us a concrete rule for where new variables must go.
+2. **The dual constructor pattern.** `_disableAndMaybeSetOwner(owner_)` sets the owner and *then* calls `_disableInitializers()`. In production `owner_ = address(0)`, so it only disables. In tests the owner is passed via the constructor. Can this produce an implementation that both has an owner and can be called directly (not through the proxy) with harmful effect? Note the `PledgeVaultManager` implementation holds `usdg`/`surplusBuffer` as immutables — if someone sends tokens to the **implementation address**, what becomes possible?
+3. **`initialize` never calls `__UUPSUpgradeable_init()` or a reentrancy-guard initializer.** The non-upgradeable OZ 5 `ReentrancyGuard` is used inside upgradeable contracts, so its status lives in regular storage and starts at 0 rather than `NOT_ENTERED`. Verify that OZ 5.0.2's `ReentrancyGuard` is safe with an uninitialized slot. **We consider this high priority.**
+4. **`_authorizeUpgrade` is `onlyOwner` with no timelock.** The owner is one EOA who can swap the implementation for anything and take every user's collateral. From a user's perspective this is risk #1. We know; we need a severity rating and a recommendation (multisig plus timelock) we can put in public documentation.
+5. `transferOwnership` is single-step, not `Ownable2Step`. A wrong address means the protocol can never be upgraded again.
+6. `PledgeChainlinkOracle` uses `constructor() { _disableInitializers(); }` while the others use `_disableAndMaybeSetOwner`. Inconsistent — check the implications.
+
+Deployment helpers: `contracts/script/ProxyDeploy.sol`, `VaultProxyDeploy.sol`, `OracleProxyDeploy.sol`. All use `new ERC1967Proxy(impl, abi.encodeCall(X.initialize, (owner)))`.
+
+**Actual mainnet state:** the vault and oracle sit behind proxies. The **surplus buffer and stability pool are still the old contracts and are NOT behind proxies.** And because `surplusBuffer` is `immutable` in the vault, proxying the surplus buffer requires a new vault implementation.
+
+## 15. Trust model and privileged actions
+
+The owner (one EOA, `0x82FB…9e92`, a Robinhood Wallet) can:
+
+| Action | Maximum impact |
+|---|---|
+| `upgradeToAndCall` on the vault proxy | **Total** — take all collateral and all inventory |
+| `setMarketOracle` | Point to a malicious oracle and liquidate every position |
+| `PledgeOracle.setPrice` | Same, with no deployment required |
+| `setMarketActive(false)` | Freeze new deposits/borrows only (K-1 fixed in this tree); repay/withdraw/liquidate remain |
+| `withdrawLiquidity` | Drain the entire USDG inventory (not user collateral) |
+| `PledgeSurplusBuffer.withdraw` | Take all accumulated fees |
+| `PledgeStabilityPool.setVaultManager` | Point `payDebt` at a malicious contract and drain pool deposits |
+| `registerMarket` | Add a fake collateral with a fake oracle and mint debt against worthless tokens |
+
+There is no multisig, no timelock, no guardian, no global pause, no emergency shutdown, and no role separation. If the key is lost, the protocol can never be upgraded. If the key leaks, the funds are gone.
+
+Please write a **centralization risk section we can publish**, in honest language. We'd rather disclose this plainly than dress it up.
+
+## 16. The other contracts, briefly
+
+**`PledgeSurplusBuffer`** — `receiveFee(amount, reason)` (public, uses `transferFrom`) plus `withdraw(to, amount)` (`onlyOwner`). No `ReentrancyGuard` (does it need one?). No internal accounting, just the token balance. The vault transfers fees directly, so `receiveFee` is unused in production.
+
+**`PledgeStabilityPool`** — 1:1 `deposit`/`withdraw` (no shares, no yield), `totalDeposits` plus `balanceOf`. **K-2 Option B:** this is USDG parking, not a backstop. `payDebt` now reverts (`PayDebtUnimplemented`) so it cannot be wired into `liquidate` without offset accounting. A raw transfer would have left `Σ balanceOf > usdg.balanceOf(pool)`.
+
+**`PledgeStaking`** (testnet) — MasterChef-style with `accRewardPerShare` and lock durations. `fundRewards` is public with no accounting, so rewards can be underfunded and `claim` will revert. Out of mainnet scope.
+
+**`PledgeTestnetBridge`** (testnet) — EIP-712, but:
+
+```186:186:src/core/PledgeTestnetBridge.sol
+        if (ECDSA.recover(digest, signature) != user) revert InvalidSignature();
+```
+
+The attestation is signed **by the user themselves**, not by a relayer or validator, so there is no proof that funds ever existed on the source chain. This may **only** live on testnet. If you ever see a plan to move it to mainnet, object loudly. Out of mainnet scope, but worth recording.
+
+**Mocks** — `MockERC20` (configurable decimals), `MockChainlinkFeed`, `TestnetEthFaucet`. Unproxied, never for mainnet.
+
+## 17. Known issues — the team already knows these
+
+Please don't spend audit hours rediscovering them. What we want: **confirm the severity, give a concrete exploit path, and propose a fix that respects §3.** If you disagree with our assessment, say so.
+
+| ID | Issue | Team status |
 |---|---|---|
-| **USDG** | Debt asset borrowed; Paxos on mainnet, mock on testnet | Yes (mainnet). Mock on testnet. |
-| **mNVDA, mAAPL, …** | Vault collateral (testnet mocks) | Testnet mocks; mainnet = real tokenized stocks |
-| **PLG** | Protocol token. Launchpad listing is the **economic** token. Staking rewards. | Yes |
-| **vePLG** (planned) | Voting power from **locking PLG** | **No.** Not a second DEX coin. |
-| Soulbound “gov” with no value | Tester badge only | Must **not** govern treasury / vault params |
+| **K-1** | **Pause trap.** `_requireActiveMarket` used to wrap repay/withdraw/liquidate. | **Fixed in this tree:** `active=false` blocks only deposit/borrow. Not yet upgraded on-chain |
+| **K-2** | **The stability pool is not a backstop.** `liquidate` pulls USDG from the liquidator's wallet. | **Option B:** parking only; `payDebt` reverts; copy updated |
+| **K-3** | **No `setMarketParams`.** | **Fixed in this tree:** setter with bounds, event, APR checkpoints. Not yet upgraded on-chain |
+| **K-4 / K-5** | Briefing previously swapped origination and liquidation bonus. Signature is `registerMarket(..., liqBonusBps, stabilityFeeAprBps, originationFeeBps)`. Scripts and tests use `500, 120, 50` → **bonus 5%, APR 1.2%, origination 0.5%**. Verify on-chain `markets(token)` at `0x0dfd39…` before changing fees | **Misread args — not a 5% origination typo** |
+| **K-6** | **Owner is a single EOA with no timelock**, able to upgrade and to set prices. | Known. Multisig before meaningful TVL |
+| **K-7** | **No storage gaps** in the upgradeable contracts. | Append-only for the next upgrade; `__gap` optional at the very end |
+| **K-8** | **No partial liquidation.** Requires a liquidator holding the full debt in USDG. No bot exists. | Known; operational mitigation is a small inventory |
+| **K-9** | **Interest is never swept to the surplus buffer** and mixes with inventory. The `Borrowed` event reports `payout`, not the debt increase. | We want your opinion |
+| **K-10** | **`_accrue` truncation** at 6-decimal USDG with unconditional `lastAccrual` reset. | **Fixed in this tree:** do not reset `lastAccrual` when `interest == 0`. Grind test added |
+| **K-11** | **Fee-on-transfer or rebasing collateral** would corrupt `pos.collateral` accounting. No check exists. | Current mitigation is owner curation of markets |
+| **K-12** | `marketList` is unbounded and there is no `removeMarket`. | Low |
+| **K-13** | The old vault `0xf486…` (not a proxy, no `withdrawLiquidity`) has **~10 USDG permanently stuck**. Its market is paused. | Accepted loss. **Do not** attempt recovery |
+| **K-14** | Mainnet oracle type at `0x1952…`. | **Resolved:** `PledgeChainlinkOracle`, `maxStaleness` = 4 days |
 
-**Do not ship a second valueless unswappable governance coin.** Sybil, confusion, and a rug on launchpad holders.
+## 18. Test suite and coverage gaps
 
-**Do not let unlocked liquid PLG vote 1:1.** Launchpad snipers could take fee/LTV/Surplus Buffer.
+```
+test/
+  PledgeVaultManager.t.sol      ← happy paths, pause trap, 6-dp grind, setMarketParams, upgrade storage, bad-debt cap
+  ProxyDeploy.t.sol             ← proxy init; payDebt unimplemented
+  PledgeChainlinkOracle.t.sol   ← scale, stale, zero/negative, non-8 decimals
+  PledgeStaking.t.sol
+  PledgeTestnetBridge.t.sol
+  MockERC20.t.sol
+```
 
-Governance path:
+Default setup still uses `MockERC20(..., 18)` for USDG. **6-decimal paths that now exist:** `test_borrowWithSixDecimalUsdg`, `test_liquidationSeizesCorrectlyWithSixDecimalUsdg`, `test_sixDecimalUsdgGrindDoesNotResetLastAccrual`.
 
-1. Now: team / multisig operators.
-2. PLG staking (already on testnet).
-3. Later: lock PLG → vePLG + timelock on execution.
-4. Buyback-and-burn of PLG: **not live**. Fees → Surplus Buffer. Any burn is a **future governance** choice.
+Still missing (nice-to-have):
 
----
+- Invariant and fuzz tests (see §19)
+- Collateral tokens with 6 and 8 decimals, not just 18
+- `principalDebt <= pos.debt` fuzz
 
-## 12. Surplus Buffer
+## 19. Invariants we claim — please prove or break them
 
-- Receives **origination** USDG on each borrow.
-- Stability interest: accrued onto debt; when repaid, USDG returns to **vault liquidity** (current code), not a separate transfer to the buffer. In-app copy that says “routed to Surplus Buffer over time” is **aspirational / simplified**.
-- `withdraw` is **owner-only**. First job of the reserve: absorb bad debt before pool depositors take losses (policy). Not an automatic buyback contract.
+Good targets for `forge test --fuzz` and invariant testing.
 
----
+**Solvency and accounting**
 
-## 13. Modules & routes
+1. `principalDebt[c][u] <= positions[c][u].debt`, always.
+2. `positions[c][u].debt == 0` ⟹ `principalDebt[c][u] == 0 && debtOpenedAt[c][u] == 0`.
+3. `Σ positions[c][u].collateral <= IERC20(c).balanceOf(vault)` for every collateral `c`.
+4. USDG leaves the vault only via `borrow` payout, the origination fee transfer, and `withdrawLiquidity`.
 
-| Route | Status | Notes |
+**Health factor**
+
+5. A successful `withdraw` with `debt > 0` ⟹ `HF >= 1e18` afterwards.
+6. A successful `borrow` ⟹ `debtUsd <= maxDebt(collateralUsd, maxLtvBps)`.
+7. A successful `liquidate` ⟹ HF **before** execution was `< 1e18`.
+8. `liquidate` can never be called by the position owner (`SelfLiquidationNotAllowed`).
+9. HF can only fall because the price fell, interest accrued, or the user withdrew. **Never** because of a third party's action.
+
+**Interest**
+
+10. `getRepayBreakdown().total == positions.debt + pending`, and `principal + interest == total`.
+11. Interest is monotonically increasing in time for a fixed debt. (K-10 grind path is covered in unit tests.)
+12. Full repayment followed by a new borrow resets `debtOpenedAt`; interest does not carry over.
+
+**Narrative invariants (product-level, not just technical)**
+
+13. No function can move a user's collateral out of their position while `HF >= 1e18` — except `upgradeToAndCall` by the owner.
+14. No function can increase a user's debt other than that user's own `borrow` and time-based interest accrual.
+15. A rise in the collateral price **never** increases `stabilityFeeAprBps` or `debt`.
+
+If 13, 14, or 15 can be broken, we consider it **critical** by definition, even if the dollar loss is small, because it breaks the product promise.
+
+## 20. The next upgrade — review it before we deploy
+
+We plan **one** vault upgrade (`upgradeToAndCall` on proxy **`0x0dfd39…`**, never `0x1757…`) containing the implementation already in this tree:
+
+1. **The pause fix** (K-1): `active == false` blocks only `deposit` and `borrow`.
+2. **`setMarketParams`** (K-3): bounds + event; APR checkpoints so already-accrued interest is not rewritten.
+3. **The pool decision** (K-2 Option B): parking only; do not wire `payDebt`.
+4. **K-10:** do not reset `lastAccrual` when `interest == 0`.
+
+Storage rule: **append-only**. New variables at the end of the live layout (`aprCheckpoints` mapping). Do not insert in the middle. `__gap` is optional hygiene at the very end — not required to unlock funds.
+
+`surplusBuffer` is `immutable`, so it cannot be swapped with a setter, only with a new implementation. Please don't propose `setStorage`. Do not broadcast to 4663 unless we ask.
+
+## 21. Current on-chain state
+
+### Mainnet — Robinhood Chain 4663
+
+| Contract | Address | Notes |
 |---|---|---|
-| `/borrow` | Live | Deposit / borrow / repay / withdraw + receipt |
-| `/borrow/pool` | Live | Stability Pool USDG |
-| `/borrow/faucet` | Testnet live | 200 USDG, 50 PLG, 2 m-token; **48h** / token / wallet |
-| `/borrow/staking` | Live | PLG lock ~7d; USDG pool no lock; rewards in PLG |
-| `/borrow/bridge` | Partial | EIP-712 attestation on RH testnet — **not** a real L1 bridge |
-| `/borrow/liquidator` | Live | Auto-scan HF < 1; need USDG ≥ full debt |
-| `/borrow/analytics` | Live | Chain KPIs; activity lookback limited (see FAQ) |
-| `/borrow/admin/prices` | Testnet operators | Mock feed ± presets; must **sync** vault oracle |
-| `/borrow/governance` | Preview | No Governor |
-| `/borrow/psm` | Preview | No contract |
-| `/docs` | Live | Public docs |
+| Vault (proxy) | `0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62` | **LIVE. Canonical. From [`deployments/4663.json`](deployments/4663.json)** |
+| Oracle | `0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9` | **`PledgeChainlinkOracle`**, `maxStaleness` = 4 days |
+| Surplus buffer | `0xEa30446c46D61514f19c897224E65b13Fb0A826c` | **Not a proxy** (legacy contract) |
+| Stability pool | `0x8570a571CC83f87B3Ca4249B71646Cc807350e14` | **Not a proxy**; parking only, not a backstop |
+| USDG (Paxos) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | **6 decimals** |
+| Old vault | `0xf486F332A162CC4bb844506254a649C300D64e9b` | Deprecated, ~10 USDG stuck (K-13) |
+| Non-canonical vault | `0x1757a7BD9078001adD29d98Ba712DA7ba154C1AE` | Unsafe script target — **do not upgrade** |
 
----
+Explorer: `robinhoodchain.blockscout.com`. Its API sits behind Cloudflare, so `forge verify-contract` usually fails; we use **Sourcify**.
 
-## 14. Testnet operations
+**Eight markets** on the canonical vault. `registerMarket` args `500, 120, 50` mean **liq bonus 5% / APR 1.2% / origination 0.5%**. `liqRatioBps` is **not** 16600 for every name (SPY 13300, AAPL/MSFT 15300, etc. — see §22).
 
-### Faucet
+**USDG inventory in the vault proxy is 0.** The four-step smoke test has **not** been run on this proxy yet.
 
-- Mock ERC-20 mint, **48 hours** per token per wallet.
-- ETH gas: Robinhood testnet faucet / in-app ETH faucet (~0.01 ETH, 24h) if configured.
-- Liquidation tests: keep debt **small**; faucet is 200 USDG / 48h.
+### Testnet — Robinhood Chain 46630
 
-### Oracles
+Vault: see [`deployments/46630.json`](deployments/46630.json). Mock USDG at **18 decimals**. Mock collateral `mNVDA`, `mAAPL`, and others.
 
-- UI ticker reads `latestRoundData` on mock feeds (and may **animate** the last cents).
-- Vault risk uses **PledgeOracle** storage. If feed ≠ oracle, borrow/withdraw can block as **stale**.
-- Operators: Price Admin or `SyncTestnetOracleFromFeeds.s.sol`.
+**Testnet is the safest place for you to experiment.** If you need mock tokens or prices, ask us rather than guessing.
 
-### Indexer
+## 22. Market parameters (reference)
 
-- Optional Postgres. Without it, RPC `getLogs` lookback **500,000 blocks** ≈ **~34 days** on this chain.
-- Live KPIs (TVL, prices, collateral balances) read **state**, not that window.
-- `syncVaultEventsUntilCaughtUp` only advances a few 20k-block chunks per request — activity can lag.
+Canonical mainnet values from [`deployments/4663.json`](deployments/4663.json). Shared fee triplet on all names: **`liqBonusBps=500` (5%), `stabilityFeeAprBps=120` (1.2%), `originationFeeBps=50` (0.5%)**.
 
-### Self-liquidation
-
-- UI + contract error `SelfLiquidationNotAllowed`.
-- Deployed 46630 vault may lag repo; confirm before promising on-chain enforcement.
-
----
-
-## 15. UI truthfulness
-
-| Surface | Behavior |
-|---|---|
-| Locked collateral KPI | Rounded to **whole dollars** (`$439.60` → `$440`) |
-| Oracle ticker | 2 decimals + rolling digits + slight jitter | Can look ≠ 2 × price |
-| Repay tab | Principal / interest / duration / total | Needs vault with `getRepayBreakdown` |
-| HF gauge | On-chain HF, liquidation at 1.00, target 2.50 | Not collateral/debt |
-
-Older vaults without `getRepayBreakdown`: UI falls back to pending interest since last interaction only.
-
----
-
-## 16. Contracts (testnet 46630)
-
-Authoritative list: `web/src/lib/deployments/46630.json`.
-
-| Name | Address |
-|---|---|
-| PledgeVaultManager | `0x73a805Ffdefe8cC514238f68BC9400a884945bCa` |
-| PledgeStabilityPool | `0xE65c5A7075447Bf9fCf8678717a2671Bf951B0B4` |
-| PledgeOracle | `0x5eF13a368Cc96e3f324a79cBEf5a9Cd81eA1Efdf` |
-| PledgeSurplusBuffer | `0x65A5979a947dE7dBbdeA42E1B168E2F2479fb5C8` |
-| PledgeFinanceUSDG (mock) | `0xF10AA239c709025238F2181812330Ba706ecA9E7` |
-| PledgeFinancePLG (mock on this chain) | `0x046320362ff989E11DA762B5125d3099fd27075E` |
-| PledgeStaking | `0xd90F9Feb90b13C126F09bB833C52e24f01751d47` |
-| PledgeTestnetBridge | `0x4d01aef8a2f1c8663dba8d9aebfa56e5be0d9cd5` |
-
-Launchpad PLG is a **separate** listing from testnet mock PLG. Do not mix addresses in public answers without checking the chain.
-
----
-
-## 17. FAQ
-
-### A. Borrowing, interest, and redeeming shares
-
-**Can I pledge shares, take USDG, then return USDG and get the shares back?**  
-Yes. Deposit → borrow → repay (principal + accrued interest) → withdraw. You did not sell the shares.
-
-**Do I have to repay on a schedule / every month?**  
-No. No due date, no monthly USDG bill. You can sit as long as HF ≥ 1.
-
-**Then how does interest work? Longer loan = more interest?**  
-Yes. That is the product. APR runs in the background. You pay it **at repayment**, with a breakdown: principal, how long, interest, total. 8 months costs more than 1 month. 4 years costs more than 8 months.
-
-**Is that the same as a monthly installment?**  
-No. Installment = you must send money on a calendar or you default. Pledge = optional repay anytime; unpaid interest **adds to what you owe later**, it does not auto-seize a healthy vault.
-
-**Does paying later ruin the “keep your shares” story?**  
-No. Showing a honest receipt **supports** the story. What would ruin it: a due date, a monthly mandate, or seizing shares while HF ≥ 1.
-
-**Where do I see interest?**  
-Repay tab: principal, time borrowed, interest, total due. Until the upgraded vault is redeployed, some testnet books may only show interest since the last vault action.
-
-**If the stock goes up, does my rate go up?**  
-No. That would tax your upside. APR is time-based only. A higher stock price **improves** health factor.
-
-**If I never repay for 4 years and the stock rips, what happens?**  
-You still own the vault. Debt is a bit larger (interest). HF is usually **safer**. Unlock shares by repaying the higher total. The platform does not seize because you waited.
-
-**Can I repay a little at a time?**  
-Yes. Interest is cleared first, then principal.
-
-**Why did I receive less USDG than my debt?**  
-Origination fee (~0.5%) is taken at borrow. Debt is the gross size; wallet gets net.
-
----
-
-### B. Default, “mortgage,” liquidation
-
-**If I don’t pay, does the platform take my shares?**  
-Not automatically, and not because time passed. Healthy vaults (HF ≥ 1) are not confiscated.
-
-**When can someone take the shares?**  
-Only if **HF < 1.00** (price crash and/or too much debt vs the liquidation ratio). A liquidator pays your USDG debt and receives collateral at a ~5% bonus. Leftover shares stay yours.
-
-**Is that the company treasury mortgaging me?**  
-No. It is an open liquidation. The liquidator (or, in the intended design, Stability Pool depositors) is the counterparty.
-
-**Can I liquidate myself to test?**  
-No. Self-liquidation is blocked. Use a second wallet.
-
-**Why is it so hard to get liquidated on stocks?**  
-Equities move slower than crypto. From HF 1.33 you may need a ~25% drop (e.g. mAMZN). That is by design. Testnet operators can crash mock feeds.
-
-**Why is HF 1.34 when 440/214 ≈ 2.05?**  
-HF uses the **liquidation ratio** (e.g. 153%), not collateral ÷ debt.
-
----
-
-### C. USDG liquidity & the pool
-
-**Who is the lender?**  
-Protocol inventory: team/treasury (and anyone who calls `fundLiquidity`) plus recycled repays. Not Stability Pool depositors. Not minted USDG.
-
-**Does the team need a lot of capital?**  
-On mainnet, yes, **if** only the team seeds Paxos USDG. Scale later via LP yield, PSM, partners — not by minting fake USDG.
-
-**Borrow failed: insufficient liquidity.**  
-The vault’s USDG balance is too low. Wait for repays, smaller borrow, or wait for a seed. Check Analytics “vault USDG liquidity.”
-
-**I deposited in the Stability Pool. Vault USDG is all lent out. Can I withdraw?**  
-Yes, if your USDG is still **in the pool**. Vault emptiness does not freeze pool withdrawals. Different pots.
-
-**Will pool depositors lose USDG if everyone borrowed?**  
-Not from lending. They only give up USDG if that USDG is used to **cover a liquidation** (intended path). Then they receive collateral at a discount instead.
-
----
-
-### D. Fees, treasury, buyback
-
-**What does the protocol earn?**  
-Origination (to Surplus Buffer) + stability interest (grows user debt; repay restocks vault USDG today).
-
-**Is revenue used to buy back and burn PLG?**  
-**Not now.** Surplus Buffer is a reserve (incl. bad-debt backstop), owner-gated. Buyback/burn would be governance later — do not promise it.
-
-**Are fees hidden?**  
-They must not be. Origination at borrow; interest on the repay receipt.
-
----
-
-### E. PLG & governance
-
-**I launched PLG on a launchpad. Is that the governance token?**  
-That PLG is the **economic** token. Do not launch a second worthless unswappable “gov” coin.
-
-**How will voting work?**  
-Lock PLG → **vePLG** (non-transferable voting units). Unlocked PLG should not be 1:1 votes.
-
-**Is governance live?**  
-No. UI preview. Operators/multisig run the protocol today.
-
----
-
-### F. Testnet app bugs & limits
-
-**Analytics only shows “34d ago” / 24h activity is 0.**  
-Known. Event scan lookback ≈ 500k blocks ≈ 34 days. Live prices and TVL can still be current. New txs may lag until indexer catch-up or lookback is extended. Not a wallet bug.
-
-**Locked collateral $440 vs price $219.80 × 2.**  
-Rounding to whole dollars + ticker animation. Protocol math uses full precision. We should align display precision.
-
-**Oracle stale / borrow blocked.**  
-Vault oracle not synced to the feed. Operator sync; testers wait or ping the team.
-
-**MetaMask wants thousands of ETH gas.**  
-The tx would revert (wrong network, stale oracle, insufficient allowance, HF, liquidity). Switch to **46630**, refresh, check the revert reason.
-
-**Faucet says cooldown.**  
-48h per mock token per wallet. ETH gas is a separate faucet.
-
-**Bridge: balance didn’t drop / weird gas.**  
-Testnet bridge is attestation + in-app settlement, not a production lock-and-mint bridge. After a bridge redeploy, hard-refresh. v2 vs v3 address mismatch is a common issue.
-
-**Charts 24h % look fake.**  
-Testnet can use a synthetic curve from the latest price. Not a full historical index.
-
----
-
-### G. Mainnet / legal / risk
-
-**Is USDG “real dollars”?**  
-On mainnet: Paxos USDG on Robinhood Chain. On testnet: **mock**. Never imply mock USDG is Paxos.
-
-**Are m-tokens real stocks?**  
-Testnet mocks. Mainnet depends on Robinhood-listed tokenized equities actually registered as collateral.
-
-**Market hours?**  
-Equities don’t price 24/7 like ETH. Oracle should use last close off-hours. Pre-close borrow pauses are **planned**, not active on testnet.
-
-**Smart contract risk?**  
-Unaudited for a polished public launch. Conservative LTVs, debt ceilings, staged rollout. Surplus Buffer + Stability Pool are the economic backstops — not a guarantee.
-
-**Oracle / feed risk?**  
-Wrong or stale prices → wrong HF. Testnet mocks can be admin-set. Mainnet must use production Chainlink-style equity feeds + staleness checks.
-
-**What if USDG depegs?**  
-Debt is USDG-denominated. Peg is Paxos’s problem on mainnet plus protocol overcollateralization. PSM is the planned in-protocol peg tool (not live).
-
-**Is this legal in my country? Are you licensed? A bank?**  
-See **§20**. Short version: **not legal advice.** Pledge is **on-chain software** for a global audience. We do **not** claim to be a bank, broker, or licensed lender in any jurisdiction. Whether *you* may use it is **your** local law — we don’t certify it.
-
-**KYC? Taxes?**  
-KYC: wallet-in, no KYC in the product today — not a legal green light. **Tax:** see **§22**. We do not compute your bill.
-
-**When is mainnet?**  
-Team target: **on or about 5 September 2026** (about three days after this spec’s 2 September 2026 update), chain ID **4663**. Staged contracts are already being deployed. Dates move — check the official account/app. Not a guaranteed SLA.
-
-**What if there is a bug?**  
-See **§21**. Possible. Report it. Testnet losses are mock. Mainnet: don’t keep feeding a suspected exploit; we may pause markets. Reimbursement is not automatic.
-
----
-
-### H. Product shape people will compare
-
-**Is this a bank loan / pawn shop?**  
-Closer to Maker/Liquity-style DeFi credit than a pawn ticket. No maturity. Collateral stays yours until HF < 1 (or you withdraw after repay).
-
-**Can I have several stocks at once?**  
-Yes, but **isolated**: one vault per asset (mAAPL debt is not mixed with mNVDA debt).
-
-**Can I short the stock?**  
-No. You stay **long** the pledged shares. You borrowed USDG; you did not sell the equity.
-
-**Do I get dividends on pledged shares?**  
-Not modeled on testnet mocks. Do not invent a dividend pass-through unless a mainnet token’s real issuer documents it — out of scope for MVP.
-
-**Staking USDG vs Stability Pool vs vault seed — what’s the difference?**  
-- **Borrow vault USDG:** inventory to lend; filled by team `fundLiquidity` + repays; you don’t “deposit to earn” there in MVP.  
-- **Stability Pool:** you deposit USDG as a backstop; not lent to borrowers; intended to take liquidation flow.  
-- **Staking USDG:** separate reward pool (PLG emissions on testnet), not the lend inventory.
-
-**Landing page / old copy says “mint USDG”.**  
-Outdated wording. **Correct:** borrow USDG that already sits in the vault. AI must not repeat “mint.”
-
-**Is the app audited? Is PLG a good investment?**  
-No audit promised here. No investment advice.
-
-**Which chain do I add?**  
-Public testers: **Robinhood Chain Testnet, chain ID 46630**. Mainnet 4663 is staged and not the tester default unless the hosted app says so.
-
-**WalletConnect / gas / wrong network?**  
-Use the in-app connect flow. Absurd gas ≈ the tx would revert. Switch to 46630, refresh, check oracle, allowance, HF, vault USDG liquidity.
-
----
-
-### I. “How do I explain this in one breath?”
-
-Pledge: lock tokenized shares, borrow USDG, keep the stock. No sale, no due date, no monthly bill. Interest grows with time and is paid when you repay (receipt: principal + duration + interest). Nobody takes a healthy vault. If the stock crashes through the liquidation line, a liquidator closes the debt. Fees sit in a surplus reserve today — not a PLG burn. PLG is the launch token; voting later is lock-to-vote, not a second valueless coin.
-
----
-
-## 18. Copy-paste replies (public)
-
-**Short**  
-Yes — pledge shares → borrow USDG → repay anytime → unlock shares. No due date, no auto-seizure. Interest accrues with time and is paid at repayment. Liquidation only if HF < 1. Fees go to the Surplus Buffer today, not buyback-and-burn.
-
-**Long — the three classic questions** (pledge / default / buyback)
-
-Good question.
-
-Yes. You pledge tokenized shares into a vault, borrow USDG against them, then return the USDG whenever you want and withdraw the same shares. You are not selling. You keep the upside if the stock goes up.
-
-If you don’t repay, the platform does not automatically take the shares. There is no due date and no monthly bill. Interest just accrues with time, so a longer loan costs more at repayment. That is the incentive to pay back — not seizure of a healthy position.
-
-Shares are only liquidated if health factor falls below 1.00, which usually means a sharp price drop, not “you waited too long.” A third-party liquidator (or the Stability Pool) closes the USDG debt and receives collateral at a bonus. Leftover shares stay in your vault. The company treasury does not mortgage them as its own.
-
-Platform fees today (origination fee on borrow + stability interest over time) go to the Surplus Buffer as protocol reserves, including a backstop for bad debt. There is no live buyback-and-burn. If PLG is later used for repurchase and destroy, that would be a governance decision — it is not how revenue works right now.
-
----
-
-## 19. Implementation map
-
-| Concern | Code |
-|---|---|
-| Vault / HF / liquidate / interest | `contracts/src/core/PledgeVaultManager.sol` |
-| Interest formula | `contracts/src/libraries/VaultMath.sol` |
-| Repay receipt (principal, interest, openedAt) | `getRepayBreakdown` + mappings `principalDebt`, `debtOpenedAt` |
-| Pool | `contracts/src/core/PledgeStabilityPool.sol` |
-| Surplus | `contracts/src/core/PledgeSurplusBuffer.sol` |
-| Testnet markets | `web/src/lib/deployments/46630.json` |
-| Repay UI | `web/src/components/app/VaultActionPanel.tsx` |
-| Credit rules for agents | `.cursor/rules/credit-policy.mdc` |
-
-Redeploy the vault after `getRepayBreakdown` for the full receipt on an already-live testnet.
-
----
-
-## 20. Global legal positioning (not a legal opinion)
-
-**Market:** global. Users anywhere can ask. Answers stay **jurisdiction-agnostic**. Never frame Pledge as a product of one country’s regulator.
-
-**Disclaimer (always available):** Nothing in this spec or in AI replies is legal, tax, investment, or accounting advice. No lawyer has approved these lines as compliance.
-
-### 20.1 What we are (product facts)
-
-| Fact | Meaning for answers |
-|---|---|
-| Smart contracts on **Robinhood Chain** | Users transact with software + a wallet. Not a branch, not a teller. |
-| CDP: pledge tokenized equity, **borrow existing USDG** | Credit **mechanics**, not a claim that we are a licensed consumer lender. |
-| Mainnet USDG is **Paxos-issued** (when live) | Pledge does **not** issue the stablecoin. |
-| Tokenized stocks / ETFs | Issued / listed on the chain by **those issuers**, not minted by Pledge as “our shares.” Testnet `m*` tokens are **mocks**. |
-| Interface is **wallet-in** | No KYC flow in the current app. Do **not** say “therefore no regulation applies.” |
-| Experimental / testnet + staged mainnet | Unaffected by slogans. No audit promised in this spec. |
-| PLG on a launchpad | Tradable protocol token. **Do not** call it a registered offering or say it is / isn’t a security. |
-
-### 20.2 What we are not (do not claim)
-
-- A bank, credit union, broker-dealer, exchange, ATS, or money transmitter **license** in any country.
-- A registered securities offering by Pledge of Apple/NVIDIA/etc. shares.
-- A custodian in the traditional legal sense (assets sit in the vault contract; that is not a licensed custody pitch).
-- “Approved,” “regulated as,” or “licensed by” any named authority.
-- Tax software. We do not compute or file tax.
-
-### 20.3 How to answer typical global legal questions
-
-**“Is Pledge legal?”**  
-We don’t certify legality worldwide. The protocol is public smart-contract software. **You** must follow the laws that apply to you (including crypto, securities, lending, and sanctions). For a legal determination, ask qualified counsel where you live.
-
-**“Are you a bank / money lender?”**  
-No. We don’t take deposits like a bank. Users lock collateral in a vault and borrow USDG from protocol inventory, on-chain.
-
-**“Is this a security? Are the stocks real?”**  
-Pledge does not issue Apple or NVDA. On **testnet**, m-tokens are fakes for testing. On **mainnet**, collateral is whatever tokenized equity the chain/issuer already lists — their disclosures apply, not a Pledge share prospectus. We don’t classify PLG.
-
-**“Do I need KYC / can OFAC / sanctioned wallets use this?”**  
-The current app does not collect KYC. Access control, geo-blocking, and sanctions screening are **team/policy** topics — escalate; don’t invent a list. Users remain responsible for not violating sanctions or local bans.
-
-**“Do I pay tax on the borrow / on liquidation?”**  
-See **§22**. Maybe, depending on where you are. **We don’t know your tax** and we don’t compute it. Keep records; ask a tax professional.
-
-**“Who owns the shares while pledged?”**  
-Product: they remain **your vault position** until you withdraw or a **HF < 1** liquidation moves collateral to a liquidator. That is protocol logic, not a court ruling on property law in your country.
-
-**“Can we onboard users in [country]?”**  
-Escalate to the team. AI must not greenlight a market.
-
-### 20.4 One-liner for global comms
-
-Pledge Finance is a **global, on-chain** protocol on Robinhood Chain: borrow USDG against tokenized equities without selling them. It is **not** a licensed bank or broker. Using it is the user’s responsibility under **their** local law. Not legal advice.
-
----
-
-## 21. Bugs, incidents, and how to answer them
-
-Smart contracts and apps can fail. This protocol is **not promised audited** in this spec. A bug is not a reason to invent a refund policy.
-
-### 21.1 Classes of failure
-
-| Class | Examples | What to tell users |
+| Market | Max LTV | `liqRatioBps` |
 |---|---|---|
-| User / wallet | Wrong network, no gas, failed approve, HF too low | How to fix. Not a protocol insolvency. |
-| UI / indexer | “34d ago” activity, USD rounding, rolling price | Known or likely display issues. On-chain state is source of truth. Explorer > UI. |
-| Oracle / ops | Stale vault price, feed ≠ oracle | Borrow/withdraw may halt until sync. Testnet: operators. Mainnet: treat as risk. |
-| Smart contract | Unexpected revert, exploit, wrong accounting | **Escalate to the team immediately.** Do not walk the user through draining funds. Do not post exploit steps in public. |
+| NVDA | 60% (6000) | 16600 (166%) |
+| SPY | 75% (7500) | 13300 (133%) |
+| AAPL / MSFT | 65% (6500) | 15300 (153%) |
+| QQQ | 70% (7000) | 14300 (143%) |
+| AMZN | 58% (5800) | 17200 (172%) |
+| META | 62% (6200) | 16100 (161%) |
+| GOOGL | 60% (6000) | 16600 (166%) |
 
-On-chain pause lever (product fact): owner can `setMarketActive(false)` per market. There is no magic “undo all txs” button.
-
-### 21.2 Testnet vs mainnet
-
-| | Testnet | Mainnet |
-|---|---|---|
-| Assets | Mocks | Paxos USDG + real listed tokens (when live) |
-| If funds look “lost” | Almost always mock. Still report. | Real value. Collect evidence; team incident process. |
-| Public disclosure | OK for UX bugs | **Exploit:** private report first if a bounty/contact exists; otherwise team. Don’t copy-paste payloads. |
-
-### 21.3 What the AI must collect
-
-- Chain ID (46630 vs 4663)
-- Tx hash, vault/market, wallet (user can redact)
-- Screenshot + whether explorer agrees with the UI
-- Expected vs actual
-
-Then: thank them, don’t promise a timeline or a payout, route to the team.
-
-### 21.4 What not to say
-
-- “Impossible to lose funds.”
-- “We’ll airdrop you whole.” (unless the team posted that)
-- “Keep retrying the same tx” on a suspected exploit.
-- Step-by-step exploit reproduction.
-
-### 21.5 One-liner
-
-Bugs happen. Explorer is truth. Report with a tx hash. Testnet is mock value. Mainnet incidents go to the team; refunds are not automatic.
-
----
-
-## 22. Tax — research notes for AI (not tax advice)
-
-Checked against **primary** sources on **2026-09-02**. Not a legal opinion. Laws change; links can move.
-
-**Hard rules for the AI**
-
-- Never file, never compute a number, never say “you owe 0.”
-- Never say “the IRS / HMRC / IRAS approved Pledge.”
-- Current product: Pledge does **not** issue tax forms or withhold tax. Do not promise that will never change.
-- Tokenized **equities** may be taxed like **shares**, not like bitcoin. Do not mash everything into “crypto tax.”
-- Testnet mocks generally have **no economic substance** (no real Paxos, no real stock) — still don’t give a legal conclusion.
-- Always: **not tax advice; talk to a qualified adviser where you are; keep your own records (tx hashes, timestamps, fiat values).**
-
-### 22.1 Protocol facts a tax analysis usually cares about
-
-These are **how the software works**, not a tax ruling:
-
-- Deposit: tokens move into `PledgeVaultManager`; the position is still keyed to **your** address until withdraw or liquidation.
-- Borrow: you receive USDG; debt is recorded. Pledge does **not** mint USDG.
-- Repay: you return USDG (principal + accrued interest).
-- Liquidation (HF < 1): a third party pays the USDG debt and receives collateral (+ bonus). You may keep leftover collateral.
-- Stability Pool / staking: separate from the borrow inventory.
-
-Whether a tax authority treats deposit as a **disposal** often turns on **beneficial ownership** — a legal/tax facts question. The AI must **not** decide it.
-
-### 22.2 Pattern seen in several systems (not your return)
-
-Across **many** (not all) income-tax systems, commentators and some manuals draw this **economic** split:
-
-| Event | Often discussed as… |
-|---|---|
-| Borrow USDG while you still own the collateral | **Not** the same as selling the shares (loan proceeds usually aren’t “income” just because you borrowed) |
-| Repay and withdraw the same tokens | Often **not** a sale of the shares if ownership never left you |
-| **Liquidation** of collateral | Often treated like a **disposal/sale** of the seized tokens, even if you didn’t click “sell” |
-| Interest you **pay** | Sometimes non-deductible personal interest; sometimes deductible if rules for investment interest are met — **jurisdiction-specific** |
-| Interest / rewards you **earn** (pool, staking) | Often **income** when received, if your country taxes that |
-
-This table is a **map of common analysis**, not a promise that your country uses it.
-
-### 22.3 United States (federal) — what is actually published
-
-**Cited**
-
-- IRS [Notice 2014-21](https://www.irs.gov/pub/irs-drop/n-14-21.pdf) (16 Apr 2014): convertible **virtual currency** is **property**; sale or exchange can be a taxable gain or loss. Scope is convertible virtual currency. It does **not** mention Pledge, DeFi CDPs, or tokenized stocks.
-- IRS [digital asset FAQs](https://www.irs.gov/individuals/international-taxpayers/frequently-asked-questions-on-digital-asset-transactions): digital assets are **property**; general property principles apply. Broker information-reporting (including Form 1099-DA for some brokers) has been expanding. That does **not** make Pledge a broker, and it also does **not** mean users have nothing to report.
-
-**What is *not* an IRS Pledge ruling**
-
-No located IRS notice says “depositing tokenized Apple shares into a smart-contract vault is / is not a taxable event.” US writers often **analogize** crypto-backed loans to ordinary collateralized loans: **borrowing is generally not a sale**; **forced liquidation generally is** a disposition (gain/loss vs basis). That analogy is **commentary**, not a Pledge-specific regulation.
-
-**Extra caution:** Notice 2014-21 is about **virtual currency**. Mainnet collateral is **tokenized equity**. Equities can follow **securities** tax principles instead of, or in addition to, digital-asset FAQs. Do not say “Notice 2014-21 means your stock loan is tax-free.”
-
-Interest you pay: US personal-interest deductibility is limited. **Do not tell a user they can deduct Pledge interest.**
-
-### 22.4 United Kingdom — what HMRC / HMT actually published
-
-**Current HMRC manual (guidance, not a Pledge ruling)**
-
-[CRYPTO61640](https://www.gov.uk/hmrc-internal-manuals/cryptoassets-manual/crypto61640) — DeFi collateral, chargeable gains:
-
-- Whether **posting collateral** is a CGT disposal depends on whether **beneficial ownership** passed (look at what the platform can do with the tokens).
-- If the borrower **kept** beneficial ownership: withdrawing collateral has no CG; **liquidation** is treated as the **borrower’s** disposal at **sterling market value** (nominee analysis under TCGA 1992 s.26). Example computation: [CRYPTO61675](https://www.gov.uk/hmrc-internal-manuals/cryptoassets-manual/crypto61675).
-- If beneficial ownership **already passed** on deposit: that deposit was the disposal; later liquidation may have **no further** CG (already disposed).
-- Extra collateral taken as a **penalty/bonus** is described as **not** an allowable deduction under TCGA s.38.
-
-The AI must **not** decide whether Pledge’s vault transferred beneficial ownership. That is a UK legal/tax facts question.
-
-**Draft law — not current law, and likely a poor fit for tokenized stocks**
-
-HMRC/HMT [policy paper](https://www.gov.uk/government/publications/cryptoasset-loans-and-liquidity-pools/tax-treatment-of-cryptoasset-loans-and-liquidity-pools) (published **13 July 2026**): proposed **no gain / no loss** treatment for certain cryptoasset loans and liquidity pools, **operative from 6 April 2027**. Draft clauses: [accessible draft](https://www.gov.uk/government/publications/cryptoasset-loans-and-liquidity-pools/draft-legislation-accessible-version).
-
-Until that is enacted and in force, **do not apply it**. Even after 6 April 2027, the draft defines a **qualifying cryptoasset** as **neither a security nor a tokenised asset** (a cryptoasset that represents a right in respect of another asset, with limited exceptions). **Tokenized equities are the kind of asset that draft is written to exclude.** Do not tell a UK user “from April 2027 your Pledge stock vault is NGNL.”
-
-### 22.5 Singapore — what IRAS actually published
-
-**Income tax / CGT**
-
-- IRAS [gains from sale of property, shares and financial instruments](https://www.iras.gov.sg/taxes/individual-income-tax/basics-of-individual-income-tax/what-is-taxable-what-is-not/gains-from-sale-of-property-shares-and-financial-instruments): profits or losses from buying and selling shares or other financial instruments **(including digital tokens)** are **generally viewed as personal investments** (typically not taxable). Trading-like activity can still be income — facts and circumstances.
-- IRAS e-Tax Guide [Income Tax Treatment of Digital Tokens](https://www.iras.gov.sg/docs/default-source/e-tax/etaxguide_cit_income-tax-treatment-of-digital-tokens_091020.pdf) (9 Oct 2020): treatment follows **payment / utility / security** token character. **Security-token** returns depend on their nature (interest, dividend, or other distributions). **No located IRAS circular** that analyses a Robinhood-Chain equity CDP like Pledge.
-- IRAS [corporate page on digital tokens](https://www.iras.gov.sg/taxes/corporate-income-tax/income-deductions-for-companies/taxable-non-taxable-income): businesses trading tokens are taxed on profits; long-term investment **capital** gains are generally not taxed because Singapore has **no general CGT**. Capital vs revenue is case-specific.
-
-**GST (business GST — not “users pay no income tax”)**
-
-IRAS [Digital payment tokens](https://www.iras.gov.sg/taxes/goods-services-tax-(gst)/specific-business-sectors/digital-payment-tokens): from **1 Jan 2020**, supplies of **digital payment tokens** that meet IRAS’s tests (including **not pegged by its issuer to any currency**) can be GST-exempt (exchange; **loans of DPTs**). Tokenized stocks are **not** Bitcoin-style DPTs. **USDG is issuer-pegged to USD**, so it likely **fails** the “not pegged to any currency” DPT test. Do **not** tell a user “your Pledge loan is GST-exempt.”
-
-### 22.6 Everyone else (EU, etc.)
-
-- **Tax is national.** EU **MiCA** is market regulation, **not** a personal tax code.
-- Germany, France, UAE, Indonesia, etc.: **do not invent rates or “no tax” slogans.**
-- Same instruction: protocol facts, local counsel, keep records.
-
-### 22.7 Practical record-keeping (non-advice)
-
-Users who care about tax typically... (3 KB left)
+The authoritative source is on-chain `markets(collateral)` at vault `0x0dfd39…`, then the manifest. `0x1757…` is not canonical.
