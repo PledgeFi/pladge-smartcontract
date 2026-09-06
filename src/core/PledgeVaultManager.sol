@@ -330,8 +330,13 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     }
 
     function _accrue(Position storage pos, uint16 stabilityFeeAprBps) internal {
+        if (pos.debt == 0) {
+            pos.lastAccrual = block.timestamp;
+            return;
+        }
         uint256 interest = VaultMath.accrueInterest(pos.debt, stabilityFeeAprBps, pos.lastAccrual);
-        if (interest > 0) pos.debt += interest;
+        if (interest == 0) return;
+        pos.debt += interest;
         pos.lastAccrual = block.timestamp;
     }
 

@@ -147,6 +147,49 @@ contract PledgeVaultManagerTest is Test {
         assertGt(vault6.getHealthFactor(alice, address(mNvda)), VaultMath.WAD);
     }
 
+    function test_sixDecimalUsdgGrindDoesNotResetLastAccrual() public {
+        MockERC20 usdg6 = new MockERC20("USDG", "USDG", 6);
+        PledgeSurplusBuffer surplus6 = new PledgeSurplusBuffer(address(usdg6), admin);
+        PledgeVaultManager vault6 = new PledgeVaultManager(address(usdg6), address(surplus6), admin);
+
+        vault6.registerMarket(address(mNvda), address(oracle), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 50);
+
+        usdg6.mint(admin, 1_000_000e6);
+        usdg6.approve(address(vault6), type(uint256).max);
+        vault6.fundLiquidity(500_000e6);
+
+        vm.startPrank(alice);
+        mNvda.approve(address(vault6), type(uint256).max);
+        vault6.deposit(address(mNvda), 10e18);
+        vault6.borrow(address(mNvda), 2e6);
+        vm.stopPrank();
+
+        (,, uint256 lastAccrualBefore) = vault6.positions(address(mNvda), alice);
+
+        // 2 USDG @ 120 bps needs ~1314s before 6-decimal interest rounds up to 1 unit.
+        vm.warp(block.timestamp + 1_313);
+        vm.prank(alice);
+        vault6.deposit(address(mNvda), 1);
+
+        (, uint256 debt, uint256 lastAccrualAfter) = vault6.positions(address(mNvda), alice);
+        assertEq(lastAccrualAfter, lastAccrualBefore);
+        assertEq(debt, 2e6);
+
+        vm.warp(block.timestamp + 1_313);
+        vm.prank(alice);
+        vault6.deposit(address(mNvda), 1);
+
+        (, debt, lastAccrualAfter) = vault6.positions(address(mNvda), alice);
+        assertEq(debt, 2e6 + 1);
+        assertEq(lastAccrualAfter, lastAccrualBefore + 2_626);
+
+        vm.warp(lastAccrualBefore + 365 days);
+        (, uint256 interest, uint256 total,,) = vault6.getRepayBreakdown(alice, address(mNvda));
+        uint256 pending = VaultMath.accrueInterest(2e6 + 1, 120, lastAccrualAfter);
+        assertEq(interest, 1 + pending);
+        assertEq(total, 2e6 + 1 + pending);
+    }
+
     function test_liquidationSeizesCorrectlyWithSixDecimalUsdg() public {
         MockERC20 usdg6 = new MockERC20("USDG", "USDG", 6);
         PledgeSurplusBuffer surplus6 = new PledgeSurplusBuffer(address(usdg6), admin);
