@@ -63,4 +63,67 @@ contract PledgeChainlinkOracleTest is Test {
         vault.setMarketOracle(address(mNvda), address(oracle2));
         assertEq(oracle2.getPrice(address(mNvda)), 250e18);
     }
+
+    function test_getPriceRevertsWhenStale() public {
+        assertFalse(oracle.isStale(address(mNvda)));
+        vm.warp(block.timestamp + 4 days + 1);
+        assertTrue(oracle.isStale(address(mNvda)));
+        vm.expectRevert(bytes("ORACLE: stale"));
+        oracle.getPrice(address(mNvda));
+    }
+
+    function test_getPriceRevertsWhenAnswerIsZero() public {
+        feed.setAnswerUnchecked(0);
+        assertTrue(oracle.isStale(address(mNvda)));
+        vm.expectRevert(bytes("ORACLE: bad price"));
+        oracle.getPrice(address(mNvda));
+    }
+
+    function test_getPriceRevertsWhenAnswerIsNegative() public {
+        feed.setAnswerUnchecked(-1);
+        vm.expectRevert(bytes("ORACLE: bad price"));
+        oracle.getPrice(address(mNvda));
+    }
+
+    function test_staleOracleBlocksVaultActions() public {
+        vm.prank(alice);
+        vault.deposit(address(mNvda), 10e18);
+
+        vm.warp(block.timestamp + 4 days + 1);
+        vm.prank(alice);
+        vm.expectRevert(bytes("ORACLE: stale"));
+        vault.borrow(address(mNvda), 1e18);
+    }
+
+    function test_getPrice_scalesEighteenDecimalFeed() public {
+        MockFeedCustomDecimals feed18 = new MockFeedCustomDecimals(18, int256(500e18));
+        oracle.setFeed(address(mNvda), address(feed18));
+        assertEq(oracle.getPrice(address(mNvda)), 500e18);
+    }
+
+    function test_getPrice_scalesSixDecimalFeed() public {
+        MockFeedCustomDecimals feed6 = new MockFeedCustomDecimals(6, int256(500e6));
+        oracle.setFeed(address(mNvda), address(feed6));
+        assertEq(oracle.getPrice(address(mNvda)), 500e18);
+    }
+}
+
+contract MockFeedCustomDecimals {
+    uint8 public immutable decimals;
+    int256 public answer;
+    uint256 public updatedAt;
+
+    constructor(uint8 decimals_, int256 answer_) {
+        decimals = decimals_;
+        answer = answer_;
+        updatedAt = block.timestamp;
+    }
+
+    function latestRoundData()
+        external
+        view
+        returns (uint80 roundId, int256 answer_, uint256 startedAt, uint256 updatedAt_, uint80 answeredInRound)
+    {
+        return (1, answer, updatedAt, updatedAt, 1);
+    }
 }

@@ -25,19 +25,20 @@ contract MockChainlinkFeed is Ownable {
     function latestRoundData()
         external
         view
-        returns (
-            uint80 roundId_,
-            int256 answer_,
-            uint256 startedAt,
-            uint256 updatedAt_,
-            uint80 answeredInRound
-        )
+        returns (uint80 roundId_, int256 answer_, uint256 startedAt, uint256 updatedAt_, uint80 answeredInRound)
     {
         return (roundId, answer, updatedAt, updatedAt, roundId);
     }
 
     function setAnswer(int256 newAnswer) external onlyOwner {
         _setAnswer(newAnswer);
+    }
+
+    /// @dev Test helper: allow zero/negative answers so oracle revert paths can be exercised.
+    function setAnswerUnchecked(int256 newAnswer) external onlyOwner {
+        roundId += 1;
+        answer = newAnswer;
+        updatedAt = block.timestamp;
     }
 
     function _setAnswer(int256 newAnswer) internal {
