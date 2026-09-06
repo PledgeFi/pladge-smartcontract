@@ -36,6 +36,11 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         uint256 lastAccrual;
     }
 
+    struct AprCheckpoint {
+        uint64 startedAt;
+        uint16 aprBps;
+    }
+
     IERC20 public immutable usdg;
     uint8 public immutable usdgDecimals;
     PledgeSurplusBuffer public immutable surplusBuffer;
@@ -48,6 +53,8 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     mapping(address collateral => mapping(address user => uint256)) public debtOpenedAt;
 
     address[] public marketList;
+    /// @dev Append-only APR history. Empty on pre-upgrade markets until the first `setMarketParams`.
+    mapping(address collateral => AprCheckpoint[]) public aprCheckpoints;
 
     event MarketRegistered(
         address indexed collateral,
@@ -59,6 +66,14 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     );
     event MarketUpdated(address indexed collateral, bool active);
     event MarketOracleUpdated(address indexed collateral, address oracle);
+    event MarketParamsUpdated(
+        address indexed collateral,
+        uint16 maxLtvBps,
+        uint16 liqRatioBps,
+        uint16 liqBonusBps,
+        uint16 stabilityFeeAprBps,
+        uint16 originationFeeBps
+    );
     event Deposited(address indexed user, address indexed collateral, uint256 amount);
     event Withdrawn(address indexed user, address indexed collateral, uint256 amount);
     event Borrowed(address indexed user, address indexed collateral, uint256 amount, uint256 fee);
@@ -82,6 +97,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
     error NotLiquidatable();
     error SelfLiquidationNotAllowed();
     error ZeroAmount();
+    error InvalidMarketParams();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address usdg_, address surplusBuffer_, address owner_) {
@@ -107,8 +123,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         uint16 originationFeeBps
     ) external onlyOwner {
         if (markets[collateral].collateral != address(0)) revert MarketExists();
-        require(maxLtvBps > 0 && maxLtvBps < VaultMath.BPS, "invalid LTV");
-        require(liqRatioBps > maxLtvBps, "liq ratio too low");
+        _validateMarketParams(maxLtvBps, liqRatioBps, liqBonusBps, stabilityFeeAprBps, originationFeeBps);
 
         markets[collateral] = Market({
             collateral: collateral,
@@ -121,6 +136,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
             active: true
         });
         marketList.push(collateral);
+        aprCheckpoints[collateral].push(AprCheckpoint({startedAt: uint64(block.timestamp), aprBps: stabilityFeeAprBps}));
 
         emit MarketRegistered(collateral, oracle, maxLtvBps, liqRatioBps, liqBonusBps, stabilityFeeAprBps);
     }
@@ -138,6 +154,36 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         require(oracle != address(0), "zero oracle");
         markets[collateral].oracle = oracle;
         emit MarketOracleUpdated(collateral, oracle);
+    }
+
+    /// @notice Update LTV, liquidation, and fee params. APR changes apply only after this timestamp.
+    function setMarketParams(
+        address collateral,
+        uint16 maxLtvBps,
+        uint16 liqRatioBps,
+        uint16 liqBonusBps,
+        uint16 stabilityFeeAprBps,
+        uint16 originationFeeBps
+    ) external onlyOwner {
+        Market storage market = markets[collateral];
+        if (market.collateral == address(0)) revert MarketUnknown();
+        _validateMarketParams(maxLtvBps, liqRatioBps, liqBonusBps, stabilityFeeAprBps, originationFeeBps);
+
+        if (stabilityFeeAprBps != market.stabilityFeeAprBps) {
+            AprCheckpoint[] storage cps = aprCheckpoints[collateral];
+            if (cps.length == 0) {
+                cps.push(AprCheckpoint({startedAt: 0, aprBps: market.stabilityFeeAprBps}));
+            }
+            cps.push(AprCheckpoint({startedAt: uint64(block.timestamp), aprBps: stabilityFeeAprBps}));
+        }
+
+        market.maxLtvBps = maxLtvBps;
+        market.liqRatioBps = liqRatioBps;
+        market.liqBonusBps = liqBonusBps;
+        market.stabilityFeeAprBps = stabilityFeeAprBps;
+        market.originationFeeBps = originationFeeBps;
+
+        emit MarketParamsUpdated(collateral, maxLtvBps, liqRatioBps, liqBonusBps, stabilityFeeAprBps, originationFeeBps);
     }
 
     /// @notice Treasury seeds USDG liquidity for borrowers.
@@ -158,10 +204,10 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
     function deposit(address collateral, uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
-        Market memory market = _requireActiveMarket(collateral);
+        _requireActiveMarket(collateral);
 
         Position storage pos = positions[collateral][msg.sender];
-        _accrue(pos, market.stabilityFeeAprBps);
+        _accrue(pos, collateral);
 
         IERC20(collateral).safeTransferFrom(msg.sender, address(this), amount);
         pos.collateral += amount;
@@ -174,7 +220,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         Market memory market = _requireKnownMarket(collateral);
 
         Position storage pos = positions[collateral][msg.sender];
-        _accrue(pos, market.stabilityFeeAprBps);
+        _accrue(pos, collateral);
         require(pos.collateral >= amount, "insufficient collateral");
 
         pos.collateral -= amount;
@@ -189,7 +235,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         Market memory market = _requireActiveMarket(collateral);
 
         Position storage pos = positions[collateral][msg.sender];
-        _accrue(pos, market.stabilityFeeAprBps);
+        _accrue(pos, collateral);
 
         uint256 fee = (amount * market.originationFeeBps) / VaultMath.BPS;
         uint256 payout = amount - fee;
@@ -220,10 +266,10 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
     function repay(address collateral, uint256 amount) external nonReentrant {
         if (amount == 0) revert ZeroAmount();
-        Market memory market = _requireKnownMarket(collateral);
+        _requireKnownMarket(collateral);
 
         Position storage pos = positions[collateral][msg.sender];
-        _accrue(pos, market.stabilityFeeAprBps);
+        _accrue(pos, collateral);
 
         uint256 repayAmount = amount > pos.debt ? pos.debt : amount;
         _applyPrincipalRepay(collateral, msg.sender, pos, repayAmount);
@@ -238,7 +284,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
         Market memory market = _requireKnownMarket(collateral);
         Position storage pos = positions[collateral][user];
-        _accrue(pos, market.stabilityFeeAprBps);
+        _accrue(pos, collateral);
 
         uint256 collateralUsd = _collateralUsd(pos.collateral, collateral, market.oracle);
         uint256 debtUsd = VaultMath.toUsdScale(pos.debt, usdgDecimals);
@@ -271,7 +317,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         if (market.collateral == address(0)) revert MarketUnknown();
 
         Position memory pos = positions[collateral][user];
-        uint256 debt = pos.debt + VaultMath.accrueInterest(pos.debt, market.stabilityFeeAprBps, pos.lastAccrual);
+        uint256 debt = pos.debt + _pendingInterest(pos.debt, pos.lastAccrual, collateral);
         uint256 collateralUsd = _collateralUsd(pos.collateral, collateral, market.oracle);
         uint256 debtUsd = VaultMath.toUsdScale(debt, usdgDecimals);
         return VaultMath.healthFactor(collateralUsd, debtUsd, market.liqRatioBps);
@@ -282,7 +328,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         if (market.collateral == address(0)) revert MarketUnknown();
 
         Position memory pos = positions[collateral][user];
-        uint256 debt = pos.debt + VaultMath.accrueInterest(pos.debt, market.stabilityFeeAprBps, pos.lastAccrual);
+        uint256 debt = pos.debt + _pendingInterest(pos.debt, pos.lastAccrual, collateral);
         uint256 collateralUsd = _collateralUsd(pos.collateral, collateral, market.oracle);
         uint256 debtUsd = VaultMath.toUsdScale(debt, usdgDecimals);
         uint256 maxDebtAllowed = VaultMath.maxDebt(collateralUsd, market.maxLtvBps);
@@ -292,6 +338,10 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
 
     function getMarketCount() external view returns (uint256) {
         return marketList.length;
+    }
+
+    function getAprCheckpointCount(address collateral) external view returns (uint256) {
+        return aprCheckpoints[collateral].length;
     }
 
     /// @notice Principal, accrued interest, and time borrowed — paid at repay, not monthly.
@@ -304,7 +354,7 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         if (market.collateral == address(0)) revert MarketUnknown();
 
         Position memory pos = positions[collateral][user];
-        uint256 pending = VaultMath.accrueInterest(pos.debt, market.stabilityFeeAprBps, pos.lastAccrual);
+        uint256 pending = _pendingInterest(pos.debt, pos.lastAccrual, collateral);
         total = pos.debt + pending;
 
         uint256 storedPrincipal = principalDebt[collateral][user];
@@ -329,15 +379,58 @@ contract PledgeVaultManager is PledgeUupsOwnable, ReentrancyGuard {
         if (!market.active) revert MarketNotActive();
     }
 
-    function _accrue(Position storage pos, uint16 stabilityFeeAprBps) internal {
+    function _accrue(Position storage pos, address collateral) internal {
         if (pos.debt == 0) {
             pos.lastAccrual = block.timestamp;
             return;
         }
-        uint256 interest = VaultMath.accrueInterest(pos.debt, stabilityFeeAprBps, pos.lastAccrual);
+        uint256 interest = _pendingInterest(pos.debt, pos.lastAccrual, collateral);
         if (interest == 0) return;
         pos.debt += interest;
         pos.lastAccrual = block.timestamp;
+    }
+
+    function _pendingInterest(uint256 debt, uint256 lastAccrual, address collateral)
+        internal
+        view
+        returns (uint256 interest)
+    {
+        if (debt == 0 || block.timestamp <= lastAccrual) return 0;
+
+        AprCheckpoint[] storage cps = aprCheckpoints[collateral];
+        uint16 currentApr = markets[collateral].stabilityFeeAprBps;
+        if (cps.length == 0) {
+            return VaultMath.accrueInterestOver(debt, currentApr, lastAccrual, block.timestamp);
+        }
+
+        uint256 cursor = lastAccrual;
+        for (uint256 i; i < cps.length; ++i) {
+            uint256 start = cps[i].startedAt;
+            uint256 end = i + 1 < cps.length ? uint256(cps[i + 1].startedAt) : block.timestamp;
+            if (end <= cursor) continue;
+            uint256 from = cursor > start ? cursor : start;
+            if (from < end) {
+                interest += VaultMath.accrueInterestOver(debt, cps[i].aprBps, from, end);
+                cursor = end;
+            }
+        }
+        if (cursor < block.timestamp) {
+            interest += VaultMath.accrueInterestOver(debt, currentApr, cursor, block.timestamp);
+        }
+    }
+
+    function _validateMarketParams(
+        uint16 maxLtvBps,
+        uint16 liqRatioBps,
+        uint16 liqBonusBps,
+        uint16 stabilityFeeAprBps,
+        uint16 originationFeeBps
+    ) internal pure {
+        if (maxLtvBps == 0 || maxLtvBps >= VaultMath.BPS) revert InvalidMarketParams();
+        if (liqRatioBps <= maxLtvBps) revert InvalidMarketParams();
+        if (liqBonusBps >= VaultMath.BPS) revert InvalidMarketParams();
+        if (originationFeeBps >= VaultMath.BPS) revert InvalidMarketParams();
+        if (stabilityFeeAprBps > VaultMath.BPS) revert InvalidMarketParams();
     }
 
     /// @dev Repay interest first, then principal. Full repay clears the debt clock.
