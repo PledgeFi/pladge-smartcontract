@@ -353,4 +353,106 @@ contract PledgeVaultManagerTest is Test {
         proxied.withdrawLiquidity(bob, 5_000e18);
         assertEq(usdg.balanceOf(bob), 5_000e18);
     }
+
+    function test_setMarketParamsUpdatesAndEmits() public {
+        vm.expectEmit(true, false, false, true);
+        emit PledgeVaultManager.MarketParamsUpdated(address(mNvda), 5000, 17000, 400, 240, 25);
+        vault.setMarketParams(address(mNvda), 5000, 17000, 400, 240, 25);
+
+        (
+            ,,
+            uint16 maxLtvBps,
+            uint16 liqRatioBps,
+            uint16 liqBonusBps,
+            uint16 stabilityFeeAprBps,
+            uint16 originationFeeBps,
+            bool active
+        ) = vault.markets(address(mNvda));
+        assertEq(maxLtvBps, 5000);
+        assertEq(liqRatioBps, 17000);
+        assertEq(liqBonusBps, 400);
+        assertEq(stabilityFeeAprBps, 240);
+        assertEq(originationFeeBps, 25);
+        assertTrue(active);
+        assertEq(vault.getAprCheckpointCount(address(mNvda)), 2);
+    }
+
+    function test_setMarketParamsRevertsOnInvalidBounds() public {
+        vm.expectRevert(PledgeVaultManager.InvalidMarketParams.selector);
+        vault.setMarketParams(address(mNvda), 0, LIQ_RATIO_BPS, 500, 120, 50);
+
+        vm.expectRevert(PledgeVaultManager.InvalidMarketParams.selector);
+        vault.setMarketParams(address(mNvda), 10_000, 16_600, 500, 120, 50);
+
+        vm.expectRevert(PledgeVaultManager.InvalidMarketParams.selector);
+        vault.setMarketParams(address(mNvda), MAX_LTV_BPS, MAX_LTV_BPS, 500, 120, 50);
+
+        vm.expectRevert(PledgeVaultManager.InvalidMarketParams.selector);
+        vault.setMarketParams(address(mNvda), MAX_LTV_BPS, LIQ_RATIO_BPS, 10_000, 120, 50);
+
+        vm.expectRevert(PledgeVaultManager.InvalidMarketParams.selector);
+        vault.setMarketParams(address(mNvda), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 10_001, 50);
+
+        vm.expectRevert(PledgeVaultManager.InvalidMarketParams.selector);
+        vault.setMarketParams(address(mNvda), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 10_000);
+
+        vm.expectRevert(PledgeVaultManager.MarketUnknown.selector);
+        vault.setMarketParams(address(0xDEAD), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 50);
+    }
+
+    function test_setMarketParamsAprChangeIsNotRetroactive() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 365 days);
+        (, uint256 interest, uint256 total,, uint16 aprBps) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(interest, 24e18);
+        assertEq(total, 2024e18);
+        assertEq(aprBps, 120);
+
+        vault.setMarketParams(address(mNvda), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 240, 50);
+
+        (, interest, total,, aprBps) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(interest, 24e18);
+        assertEq(total, 2024e18);
+        assertEq(aprBps, 240);
+
+        vm.warp(block.timestamp + 365 days);
+        (, interest, total,,) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(interest, 72e18);
+        assertEq(total, 2072e18);
+
+        vm.prank(alice);
+        vault.deposit(address(mNvda), 1);
+
+        (, uint256 debt,) = vault.positions(address(mNvda), alice);
+        assertEq(debt, 2072e18);
+        assertEq(vault.principalDebt(address(mNvda), alice), 2000e18);
+    }
+
+    function test_setMarketParamsDoesNotRewriteAlreadyAccruedDebt() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 365 days);
+        vm.prank(alice);
+        vault.deposit(address(mNvda), 1);
+
+        (, uint256 debtAfterTouch,) = vault.positions(address(mNvda), alice);
+        assertEq(debtAfterTouch, 2024e18);
+
+        vault.setMarketParams(address(mNvda), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 240, 50);
+
+        (, uint256 debtAfterParams,) = vault.positions(address(mNvda), alice);
+        assertEq(debtAfterParams, 2024e18);
+
+        vm.warp(block.timestamp + 365 days);
+        (, uint256 interest, uint256 total,,) = vault.getRepayBreakdown(alice, address(mNvda));
+        assertEq(interest, 24e18 + 48.576e18);
+        assertEq(total, 2024e18 + 48.576e18);
+    }
 }

@@ -8,11 +8,7 @@ library VaultMath {
     uint256 internal constant BPS = 10_000;
 
     /// @dev USD value of `amount` tokens at `priceUsd` (18 decimals).
-    function collateralValue(uint256 amount, uint256 priceUsd, uint8 tokenDecimals)
-        internal
-        pure
-        returns (uint256)
-    {
+    function collateralValue(uint256 amount, uint256 priceUsd, uint8 tokenDecimals) internal pure returns (uint256) {
         if (amount == 0 || priceUsd == 0) return 0;
         return (amount * priceUsd) / (10 ** uint256(tokenDecimals));
     }
@@ -40,20 +36,19 @@ library VaultMath {
 
     /// @dev HF with 1e18 precision. Liquidatable when HF < 1e18.
     /// `liqRatioBps` is minimum collateralization ratio (16600 = 166%).
-    function healthFactor(uint256 collateralUsd, uint256 debtUsd, uint16 liqRatioBps)
-        internal
-        pure
-        returns (uint256)
-    {
+    function healthFactor(uint256 collateralUsd, uint256 debtUsd, uint16 liqRatioBps) internal pure returns (uint256) {
         if (debtUsd == 0) return type(uint256).max;
         return (collateralUsd * WAD * BPS) / (debtUsd * liqRatioBps);
     }
 
     /// @dev Linear interest accrual: `debt * aprBps * elapsed / (365 days * BPS)`.
     function accrueInterest(uint256 debt, uint16 aprBps, uint256 lastAccrual) internal view returns (uint256) {
-        if (debt == 0) return 0;
-        uint256 elapsed = block.timestamp - lastAccrual;
-        if (elapsed == 0) return 0;
-        return (debt * aprBps * elapsed) / (365 days * BPS);
+        return accrueInterestOver(debt, aprBps, lastAccrual, block.timestamp);
+    }
+
+    /// @dev Same formula over an explicit `[from, to)` window so APR changes are not retroactive.
+    function accrueInterestOver(uint256 debt, uint16 aprBps, uint256 from, uint256 to) internal pure returns (uint256) {
+        if (debt == 0 || to <= from) return 0;
+        return (debt * aprBps * (to - from)) / (365 days * BPS);
     }
 }
