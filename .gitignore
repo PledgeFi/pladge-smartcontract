@@ -2,4 +2,4 @@ cache/
 out/
 broadcast/
 .env
-.product.env
+.product.md
