@@ -36,15 +36,7 @@ contract PledgeVaultManagerTest is Test {
 
         oracle.setPrice(address(mNvda), NVDA_PRICE);
 
-        vault.registerMarket(
-            address(mNvda),
-            address(oracle),
-            MAX_LTV_BPS,
-            LIQ_RATIO_BPS,
-            500,
-            120,
-            50
-        );
+        vault.registerMarket(address(mNvda), address(oracle), MAX_LTV_BPS, LIQ_RATIO_BPS, 500, 120, 50);
 
         usdg.mint(admin, 1_000_000e18);
         usdg.approve(address(vault), type(uint256).max);
@@ -204,7 +196,7 @@ contract PledgeVaultManagerTest is Test {
 
         vm.warp(block.timestamp + 365 days);
 
-        (principal, interest, total, , ) = vault.getRepayBreakdown(alice, address(mNvda));
+        (principal, interest, total,,) = vault.getRepayBreakdown(alice, address(mNvda));
         assertEq(principal, 2000e18);
         assertEq(interest, 24e18);
         assertEq(total, 2024e18);
@@ -215,7 +207,7 @@ contract PledgeVaultManagerTest is Test {
         vault.repay(address(mNvda), 24e18);
         vm.stopPrank();
 
-        (principal, interest, total, openedAt, ) = vault.getRepayBreakdown(alice, address(mNvda));
+        (principal, interest, total, openedAt,) = vault.getRepayBreakdown(alice, address(mNvda));
         assertEq(principal, 2000e18);
         assertEq(interest, 0);
         assertEq(total, 2000e18);
@@ -225,11 +217,80 @@ contract PledgeVaultManagerTest is Test {
         vault.repay(address(mNvda), 2000e18);
         vm.stopPrank();
 
-        (principal, interest, total, openedAt, ) = vault.getRepayBreakdown(alice, address(mNvda));
+        (principal, interest, total, openedAt,) = vault.getRepayBreakdown(alice, address(mNvda));
         assertEq(principal, 0);
         assertEq(interest, 0);
         assertEq(total, 0);
         assertEq(openedAt, 0);
+    }
+
+    function test_inactiveMarketBlocksDepositAndBorrow() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        vault.setMarketActive(address(mNvda), false);
+
+        vm.startPrank(alice);
+        vm.expectRevert(PledgeVaultManager.MarketNotActive.selector);
+        vault.deposit(address(mNvda), 1e18);
+        vm.expectRevert(PledgeVaultManager.MarketNotActive.selector);
+        vault.borrow(address(mNvda), 1e18);
+        vm.stopPrank();
+    }
+
+    function test_inactiveMarketAllowsRepayAndWithdraw() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 2000e18);
+        vm.stopPrank();
+
+        vault.setMarketActive(address(mNvda), false);
+
+        usdg.transfer(alice, 2000e18);
+        vm.startPrank(alice);
+        usdg.approve(address(vault), type(uint256).max);
+        vault.repay(address(mNvda), 2000e18);
+        vault.withdraw(address(mNvda), 10e18);
+        vm.stopPrank();
+
+        assertEq(mNvda.balanceOf(alice), 100e18);
+        (uint256 collateral, uint256 debt,) = vault.positions(address(mNvda), alice);
+        assertEq(collateral, 0);
+        assertEq(debt, 0);
+    }
+
+    function test_inactiveMarketAllowsLiquidation() public {
+        vm.startPrank(alice);
+        vault.deposit(address(mNvda), 10e18);
+        vault.borrow(address(mNvda), 3000e18);
+        vm.stopPrank();
+
+        oracle.setPrice(address(mNvda), 280e18);
+        vault.setMarketActive(address(mNvda), false);
+
+        usdg.transfer(bob, 5000e18);
+        vm.startPrank(bob);
+        usdg.approve(address(vault), type(uint256).max);
+        vault.liquidate(alice, address(mNvda));
+        vm.stopPrank();
+
+        (, uint256 debt,) = vault.positions(address(mNvda), alice);
+        assertEq(debt, 0);
+        assertGt(mNvda.balanceOf(bob), 0);
+    }
+
+    function test_unknownMarketStillRevertsOnExitPaths() public {
+        address unknown = address(0xDEAD);
+        vm.startPrank(alice);
+        vm.expectRevert(PledgeVaultManager.MarketUnknown.selector);
+        vault.repay(unknown, 1e18);
+        vm.expectRevert(PledgeVaultManager.MarketUnknown.selector);
+        vault.withdraw(unknown, 1e18);
+        vm.expectRevert(PledgeVaultManager.MarketUnknown.selector);
+        vault.liquidate(bob, unknown);
+        vm.stopPrank();
     }
 
     function test_ownerCanWithdrawLiquidity() public {
@@ -239,8 +300,7 @@ contract PledgeVaultManagerTest is Test {
     }
 
     function test_proxyInitializeAndWithdraw() public {
-        (PledgeVaultManager proxied,) =
-            VaultProxyDeploy.deploy(address(usdg), address(surplus), admin);
+        (PledgeVaultManager proxied,) = VaultProxyDeploy.deploy(address(usdg), address(surplus), admin);
         assertEq(proxied.owner(), admin);
         assertEq(address(proxied.usdg()), address(usdg));
 
