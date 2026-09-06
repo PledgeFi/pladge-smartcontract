@@ -13,6 +13,7 @@
     "note": "Vault markets use PledgeChainlinkOracle proxy. Prices are USD with 18 decimals."
   },
   "contracts": {
+    "PledgeToken": "0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
     "PaxosUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
     "PledgeChainlinkOracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
     "PledgeSurplusBuffer": "0xEa30446c46D61514f19c897224E65b13Fb0A826c",

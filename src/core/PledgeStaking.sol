@@ -18,6 +18,9 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     uint256 public constant ACC_PRECISION = 1e18;
     uint256 public constant EPOCH_DURATION = 7 days;
 
+    string public constant name = "Pledge Finance Staking";
+    string public constant version = "1.0.0";
+
     struct PoolInfo {
         IERC20 stakeToken;
         IERC20 rewardToken;
@@ -41,6 +44,7 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
 
     PoolInfo[] private _pools;
     mapping(uint256 poolId => mapping(address account => UserInfo)) public users;
+    mapping(uint256 poolId => string) public poolNames;
 
     event PoolAdded(
         uint256 indexed poolId, address stakeToken, address rewardToken, uint256 minLockDuration, uint256 lockDuration
@@ -55,6 +59,7 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     event LockDurationUpdated(uint256 indexed poolId, uint256 minLockDuration, uint256 lockDuration);
     event RewardsFunded(uint256 indexed poolId, address indexed from, uint256 amount);
     event RewardsWithdrawn(uint256 indexed poolId, address indexed to, uint256 amount);
+    event PoolNamed(uint256 indexed poolId, string name);
 
     error PoolInactive();
     error ZeroAmount();
@@ -155,6 +160,12 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
         _pools[poolId].minLockDuration = minLockDuration;
         _pools[poolId].lockDuration = lockDuration;
         emit LockDurationUpdated(poolId, minLockDuration, lockDuration);
+    }
+
+    function setPoolName(uint256 poolId, string calldata name_) external onlyOwner {
+        _pool(poolId);
+        poolNames[poolId] = name_;
+        emit PoolNamed(poolId, name_);
     }
 
     function setRewardRate(uint256 poolId, uint256 rewardRatePerSecond) external onlyOwner {
