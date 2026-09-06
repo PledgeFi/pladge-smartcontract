@@ -187,6 +187,16 @@ contract PledgeStakingTest is Test {
         uint256 poolId = proxied.addPool(address(plg), address(plg), 1e16, 0, true);
         assertEq(poolId, 0);
         assertEq(proxied.poolCount(), 1);
+        assertEq(proxied.name(), "Pledge Finance Staking");
+    }
+
+    function test_metadataAndPoolName() public {
+        assertEq(staking.name(), "Pledge Finance Staking");
+        assertEq(staking.version(), "1.0.0");
+
+        vm.prank(admin);
+        staking.setPoolName(plgPool, "PLG Staking");
+        assertEq(staking.poolNames(plgPool), "PLG Staking");
     }
 
     function test_stakeWithCustomLockDuration() public {
