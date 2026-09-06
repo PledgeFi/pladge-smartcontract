@@ -38,7 +38,7 @@ contract DeployStaking is Script {
         require(plg.owner() == deployer, "DeployStaking: not PLG owner");
         require(keccak256(bytes(plg.name())) == keccak256(bytes(PledgeProtocol.PLG_NAME)), "DeployStaking: bad PLG name");
         require(plg.balanceOf(deployer) >= STAKING_REWARDS, "DeployStaking: need 550k PLG");
-        require(deployer.balance >= 0.004 ether, "need ~0.004 ETH on 4663 for staking CREATE");
+        require(deployer.balance >= 0.003 ether, "need ~0.003 ETH on 4663 for staking CREATE");
 
         vm.startBroadcast(deployerKey);
 
