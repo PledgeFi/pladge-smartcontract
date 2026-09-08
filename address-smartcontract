@@ -2,14 +2,21 @@
 # Network : Robinhood Mainnet (chainId 4663)
 # Explorer: https://robinhoodchain.blockscout.com
 
-## Core protocol
+## Proxied contracts (ERC1967)
 
-PledgeVaultManager (proxy)    0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62
-PledgeChainlinkOracle (proxy) 0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9
+PledgeChainlinkOracle
+  proxy           0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9
+  implementation    0x554D19F18ec5BEd72f0BB273Ad9e904219E0bB69
+
+PledgeStaking
+  proxy           0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d
+  implementation    0x8d6BAd3bD6604D1dB700D7552609c99890051118
+
+## Non-proxy protocol contracts
+
+PledgeVaultManager            0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62
 PledgeSurplusBuffer           0xEa30446c46D61514f19c897224E65b13Fb0A826c
 PledgeStabilityPool          0x8570a571CC83f87B3Ca4249B71646Cc807350e14
-PledgeStaking (proxy)         0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d
-PledgeStakingImplementation     0x8d6BAd3bD6604D1dB700D7552609c99890051118
 PledgeToken (PLG)             0xDfC0a301CA6F62c32800C4827974ECac64BC7e38
 
 ## Governance
