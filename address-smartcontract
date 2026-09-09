@@ -14,6 +14,27 @@ PledgeFinanceSurplusBuffer  (proxy)  0xc6D477491ACE30fa5651ac61C735C2B636B095c4
 PledgeFinanceStabilityPool  (proxy)  0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D
 PledgeFinanceStaking        (proxy)  0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
 
+## Proxied contracts (ERC1967)
+
+PledgeChainlinkOracle
+  proxy           0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9
+  implementation    0x554D19F18ec5BEd72f0BB273Ad9e904219E0bB69
+
+PledgeStaking
+  proxy           0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d
+  implementation    0x8d6BAd3bD6604D1dB700D7552609c99890051118
+
+## Non-proxy protocol contracts
+
+# Live vault is a direct PledgeVaultManager deploy (8462 bytes, EIP-1967 slots empty).
+# Docs call it a proxy; on-chain it is not. There is no implementation behind it.
+PledgeVaultManager            0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62
+PledgeSurplusBuffer           0xEa30446c46D61514f19c897224E65b13Fb0A826c
+PledgeStabilityPool           0x8570a571CC83f87B3Ca4249B71646Cc807350e14
+PledgeToken (PLG)             0xDfC0a301CA6F62c32800C4827974ECac64BC7e38
+
+## Implementations — upgrade targets only, never integrate against these
+
 ## Implementations — upgrade targets only, never integrate against these
 
 PledgeVaultManager                   0x0b8E032242A54a5373aed9968FEF01a9A0e0ec6F
