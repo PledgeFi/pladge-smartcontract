@@ -1,35 +1,42 @@
 {
   "protocol": "Pledge Finance",
-  "version": "1.0.0-mainnet",
+  "version": "2.1.0-mainnet",
   "chainId": 4663,
   "network": "Robinhood Mainnet",
   "rpcUrl": "https://rpc.mainnet.chain.robinhood.com",
   "explorer": "https://robinhoodchain.blockscout.com",
-  "deployedAt": "2026-07-20",
+  "deployedAt": "2026-09-09",
+  "note": "Full redeploy. Every protocol contract sits behind a branded ERC1967 proxy, including the surplus buffer and stability pool, which were bare contracts in v1. The PLG token is reused from the launchpad and is deliberately not upgradeable.",
+  "brandedProxies": {
+    "source": "src/upgrade/PledgeFinanceProxies.sol",
+    "why": "A contract's name is bound to its bytecode, so a plain ERC1967Proxy always displays as `ERC1967Proxy` on an explorer. Each module therefore gets an empty subclass of ERC1967Proxy carrying a Pledge Finance name. They add no behavior: storage, the ERC1967 implementation slot, and upgradeToAndCall all work exactly as with a plain proxy.",
+    "consequence": "Branding an address is only possible at deploy time. It can never be retrofitted onto a live proxy."
+  },
+  "verification": {
+    "verifier": "sourcify",
+    "status": "exact_match for all implementations and proxies",
+    "reason": "Blockscout's API on this chain sits behind Cloudflare and rejects automated requests, so forge verify-contract cannot reach it. Import into Blockscout from a browser via Verify & Publish -> Sourcify."
+  },
+  "owner": {
+    "current": "0x82FBf39835a885C1CdA3D756FB6AA79802f29e92",
+    "type": "deployer EOA",
+    "plannedHandover": "TimelockController 0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD, pending",
+    "timelockMinDelaySeconds": 172800
+  },
   "chainlink": {
     "type": "chainlink-feeds",
     "oracle": "PledgeChainlinkOracle",
     "maxStalenessSeconds": 345600,
-    "note": "Vault markets use PledgeChainlinkOracle proxy. Prices are USD with 18 decimals."
-  },
-  "staking": {
-    "proxy": "0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d",
-    "implementation": "0x8d6BAd3bD6604D1dB700D7552609c99890051118",
-    "owner": "0x82FBf39835a885C1CdA3D756FB6AA79802f29e92",
-    "pools": {
-      "0": { "name": "PLG Staking", "stakeToken": "PLG", "rewardToken": "PLG", "minLock": "1 day", "lock": "90 days", "rewardReserve": "550000e18" },
-      "1": { "name": "USDG Staking", "stakeToken": "USDG", "rewardToken": "PLG", "minLock": "0", "lock": "0", "rewardReserve": "0" }
-    }
+    "note": "Prices are USD with 18 decimals. 4 days of staleness tolerance because equity feeds stop updating outside market hours; a tighter bound would freeze repay and withdraw every weekend. Note that withdraw always reads the oracle, even for a debt-free position."
   },
   "contracts": {
+    "PledgeFinanceVault": "0x83B6F15BD3A7385C0F55BA3C685f688511279B00",
+    "PledgeFinanceOracle": "0xB11951Dba2A7cAF846e0A3484237d8E5844428b7",
+    "PledgeFinanceSurplusBuffer": "0xc6D477491ACE30fa5651ac61C735C2B636B095c4",
+    "PledgeFinanceStabilityPool": "0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D",
+    "PledgeFinanceStaking": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
     "PledgeToken": "0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
     "PaxosUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
-    "PledgeChainlinkOracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-    "PledgeSurplusBuffer": "0xEa30446c46D61514f19c897224E65b13Fb0A826c",
-    "PledgeVaultManager": "0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62",
-    "PledgeStabilityPool": "0x8570a571CC83f87B3Ca4249B71646Cc807350e14",
-    "PledgeStaking": "0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d",
-    "PledgeStakingImplementation": "0x8d6BAd3bD6604D1dB700D7552609c99890051118",
     "RobinhoodNVDA": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
     "RobinhoodSPY": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
     "RobinhoodAAPL": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
@@ -39,82 +46,97 @@
     "RobinhoodMETA": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
     "RobinhoodGOOGL": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3"
   },
+  "implementations": {
+    "note": "Never integrate against these. They exist only as upgrade targets behind the proxies above.",
+    "PledgeVaultManager": "0x0b8E032242A54a5373aed9968FEF01a9A0e0ec6F",
+    "PledgeChainlinkOracle": "0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc",
+    "PledgeSurplusBuffer": "0x5df0d2c7aB8443f41B84e684027eEB656e303C12",
+    "PledgeStabilityPool": "0x3fc952F815f63dE054446D4c3C16c57d6467635D",
+    "PledgeStaking": "0x4de94A31e0725270b047820293e784bb62363Be3"
+  },
+  "upgradeRules": {
+    "pattern": "UUPS behind ERC1967. Upgrade with upgradeToAndCall(newImpl, \"\") from the owner.",
+    "storage": "Append only. New variables go at the end of the leaf contract. PledgeUupsOwnable must keep `owner` alone at slot 0; there are no storage gaps anywhere.",
+    "vaultImmutables": "PledgeVaultManager holds usdg, usdgDecimals, and surplusBuffer as immutables, so they live in implementation bytecode rather than proxy storage. Any replacement implementation MUST be constructed with (0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168, 0xc6D477491ACE30fa5651ac61C735C2B636B095c4, address(0)) or the proxy will silently point at a different USDG or surplus buffer."
+  },
+  "staking": {
+    "proxy": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
+    "implementation": "0x4de94A31e0725270b047820293e784bb62363Be3",
+    "rewardToken": "PLG (reused from launchpad)",
+    "pools": {
+      "0": {
+        "name": "PLG Staking",
+        "stakeToken": "PLG",
+        "rewardToken": "PLG",
+        "minLock": "1 day",
+        "lock": "90 days",
+        "rewardReserve": "550000e18",
+        "rewardRatePerSecond": "70730452674897119"
+      },
+      "1": {
+        "name": "USDG Staking",
+        "stakeToken": "USDG",
+        "rewardToken": "PLG",
+        "minLock": "0",
+        "lock": "0",
+        "rewardReserve": "0"
+      }
+    }
+  },
   "deprecated": {
-    "PledgeVaultManager_v0": "0xf486F332A162CC4bb844506254a649C300D64e9b",
-    "note": "Superseded by UUPS proxy cutover. Markets paused; do not integrate."
+    "note": "Do not integrate, upgrade, or seed any of these. The 2026-09-09a set was replaced hours later by the branded-proxy redeploy; its markets have been set inactive and its 550k PLG reward reserve was recovered.",
+    "2026-09-09a_vault": "0xb2C7aC9020dB5C76930fbFEBF01043E41E46002c",
+    "2026-09-09a_oracle": "0xE8D4127542F262A46aE6C61223b05e10841F4672",
+    "2026-09-09a_surplus": "0x0fe86A3DFd3478CD4c840E27bffeeE9D72565912",
+    "2026-09-09a_pool": "0x45EA5b2Fc2a15493BADfBF534B3EB329F8b950c0",
+    "2026-09-09a_staking": "0xA317886027c83183C22d9526bd09e9837CBc38F6",
+    "v0_vault": "0xf486F332A162CC4bb844506254a649C300D64e9b",
+    "v1_vault": "0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62",
+    "nonCanonical_vault": "0x1757a7BD9078001adD29d98Ba712DA7ba154C1AE",
+    "v1_oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+    "v1_surplus": "0xEa30446c46D61514f19c897224E65b13Fb0A826c",
+    "v1_pool": "0x8570a571CC83f87B3Ca4249B71646Cc807350e14",
+    "v1_staking": "0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d"
   },
   "markets": {
     "NVDA": {
       "name": "Robinhood NVDA",
       "collateral": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "oracle": "0xB11951Dba2A7cAF846e0A3484237d8E5844428b7",
       "chainlinkFeed": "0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15",
       "maxLtvBps": 6000,
       "liqRatioBps": 16600,
-      "status": "live"
+      "liqBonusBps": 500,
+      "stabilityFeeAprBps": 120,
+      "originationFeeBps": 50,
+      "status": "registered"
     },
     "SPY": {
       "name": "Robinhood SPY",
       "collateral": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
+      "oracle": "0xB11951Dba2A7cAF846e0A3484237d8E5844428b7",
       "chainlinkFeed": "0x319724394D3A0e3669269846abE664Cd621f9f6A",
       "maxLtvBps": 7500,
       "liqRatioBps": 13300,
-      "status": "live"
-    },
-    "AAPL": {
-      "name": "Robinhood AAPL",
-      "collateral": "0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-      "chainlinkFeed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0",
-      "maxLtvBps": 6500,
-      "liqRatioBps": 15300,
-      "status": "live"
-    },
-    "QQQ": {
-      "name": "Robinhood QQQ",
-      "collateral": "0xD5f3879160bc7c32ebb4dC785F8a4F505888de68",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-      "chainlinkFeed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae",
-      "maxLtvBps": 7000,
-      "liqRatioBps": 14300,
-      "status": "live"
-    },
-    "MSFT": {
-      "name": "Robinhood MSFT",
-      "collateral": "0xe93237C50D904957Cf27E7B1133b510C669c2e74",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-      "chainlinkFeed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E",
-      "maxLtvBps": 6500,
-      "liqRatioBps": 15300,
-      "status": "live"
-    },
-    "AMZN": {
-      "name": "Robinhood AMZN",
-      "collateral": "0x12f190a9F9d7D37a250758b26824B97CE941bF54",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-      "chainlinkFeed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C",
-      "maxLtvBps": 5800,
-      "liqRatioBps": 17200,
-      "status": "live"
-    },
-    "META": {
-      "name": "Robinhood META",
-      "collateral": "0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-      "chainlinkFeed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1",
-      "maxLtvBps": 6200,
-      "liqRatioBps": 16100,
-      "status": "live"
-    },
-    "GOOGL": {
-      "name": "Robinhood GOOGL",
-      "collateral": "0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3",
-      "oracle": "0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9",
-      "chainlinkFeed": "0xF6f373a037c30F0e5010d854385cA89185AE638b",
-      "maxLtvBps": 6000,
-      "liqRatioBps": 16600,
-      "status": "live"
+      "liqBonusBps": 500,
+      "stabilityFeeAprBps": 120,
+      "originationFeeBps": 50,
+      "status": "registered"
     }
+  },
+  "pendingMarkets": {
+    "note": "Not registered. Add only after the four-step smoke test passes on NVDA.",
+    "AAPL": { "maxLtvBps": 6500, "liqRatioBps": 15300, "chainlinkFeed": "0x6B22A786bAa607d76728168703a39Ea9C99f2cD0" },
+    "QQQ": { "maxLtvBps": 7000, "liqRatioBps": 14300, "chainlinkFeed": "0x80901d846d5D7B030F26B480776EE3b29374C2ae" },
+    "MSFT": { "maxLtvBps": 6500, "liqRatioBps": 15300, "chainlinkFeed": "0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E" },
+    "AMZN": { "maxLtvBps": 5800, "liqRatioBps": 17200, "chainlinkFeed": "0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C" },
+    "META": { "maxLtvBps": 6200, "liqRatioBps": 16100, "chainlinkFeed": "0x7C38C00C30BEe9378381E7B6135d7283356D71b1" },
+    "GOOGL": { "maxLtvBps": 6000, "liqRatioBps": 16600, "chainlinkFeed": "0xF6f373a037c30F0e5010d854385cA89185AE638b" }
+  },
+  "status": {
+    "usdgInventory": 0,
+    "smokeTestPassed": false,
+    "fundManagerRoundTripTested": true,
+    "blockedOn": "Deployer holds 0 NVDA, so the deposit-borrow-repay-withdraw smoke test cannot run. A 1 USDG fundLiquidity/withdrawLiquidity round trip was verified against the 2026-09-09a vault."
   }
 }

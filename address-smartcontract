@@ -1,41 +1,74 @@
 # Pledge Finance — Live Smart Contracts
 # Network : Robinhood Mainnet (chainId 4663)
 # Explorer: https://robinhoodchain.blockscout.com
+# Deployed: 2026-09-09 (full redeploy, branded ERC1967 proxies)
+# Verified: Sourcify, exact match for every implementation and proxy
 
-## Core protocol
+## Core protocol — use the PROXY addresses
+## Each proxy is a named subclass of ERC1967Proxy (src/upgrade/PledgeFinanceProxies.sol),
+## so the explorer shows a Pledge Finance name instead of the generic "ERC1967Proxy".
 
-PledgeVaultManager (proxy)    0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62
-PledgeChainlinkOracle (proxy) 0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9
-PledgeSurplusBuffer           0xEa30446c46D61514f19c897224E65b13Fb0A826c
-PledgeStabilityPool          0x8570a571CC83f87B3Ca4249B71646Cc807350e14
-PledgeStaking (proxy)         0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d
-PledgeStakingImplementation     0x8d6BAd3bD6604D1dB700D7552609c99890051118
-PledgeToken (PLG)             0xDfC0a301CA6F62c32800C4827974ECac64BC7e38
+PledgeFinanceVault          (proxy)  0x83B6F15BD3A7385C0F55BA3C685f688511279B00
+PledgeFinanceOracle         (proxy)  0xB11951Dba2A7cAF846e0A3484237d8E5844428b7
+PledgeFinanceSurplusBuffer  (proxy)  0xc6D477491ACE30fa5651ac61C735C2B636B095c4
+PledgeFinanceStabilityPool  (proxy)  0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D
+PledgeFinanceStaking        (proxy)  0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
 
-## Governance
+## Implementations — upgrade targets only, never integrate against these
 
-Timelock                      0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD
-Safe (3-of-4)                 0x509dC4A81045F6FA42D388A68e2C65d20d493560
+PledgeVaultManager                   0x0b8E032242A54a5373aed9968FEF01a9A0e0ec6F
+PledgeChainlinkOracle                0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc
+PledgeSurplusBuffer                  0x5df0d2c7aB8443f41B84e684027eEB656e303C12
+PledgeStabilityPool                  0x3fc952F815f63dE054446D4c3C16c57d6467635D
+PledgeStaking                        0x4de94A31e0725270b047820293e784bb62363Be3
+
+## Token (reused from launchpad, not upgradeable)
+
+PledgeToken (PLG)                    0xDfC0a301CA6F62c32800C4827974ECac64BC7e38
+
+## Governance (handover still pending — owner is the deployer EOA)
+
+Timelock (minDelay 48h)              0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD
+Safe (3-of-4)                        0x509dC4A81045F6FA42D388A68e2C65d20d493560
+Deployer EOA (current owner)         0x82FBf39835a885C1CdA3D756FB6AA79802f29e92
 
 ## Tokens
 
-PaxosUSDG                     0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
-RobinhoodNVDA                 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC
-RobinhoodSPY                  0x117cc2133c37B721F49dE2A7a74833232B3B4C0C
-RobinhoodAAPL                 0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9
-RobinhoodQQQ                  0xD5f3879160bc7c32ebb4dC785F8a4F505888de68
-RobinhoodMSFT                 0xe93237C50D904957Cf27E7B1133b510C669c2e74
-RobinhoodAMZN                 0x12f190a9F9d7D37a250758b26824B97CE941bF54
-RobinhoodMETA                 0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35
-RobinhoodGOOGL                0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3
+PaxosUSDG (6 decimals)               0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
+RobinhoodNVDA                        0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC
+RobinhoodSPY                         0x117cc2133c37B721F49dE2A7a74833232B3B4C0C
+RobinhoodAAPL                        0xaF3D76f1834A1d425780943C99Ea8A608f8a93f9
+RobinhoodQQQ                         0xD5f3879160bc7c32ebb4dC785F8a4F505888de68
+RobinhoodMSFT                        0xe93237C50D904957Cf27E7B1133b510C669c2e74
+RobinhoodAMZN                        0x12f190a9F9d7D37a250758b26824B97CE941bF54
+RobinhoodMETA                        0xc0D6457C16Cc70d6790Dd43521C899C87ce02f35
+RobinhoodGOOGL                       0x2e0847E8910a9732eB3fb1bb4b70a580ADAD4FE3
 
 ## Chainlink feeds
 
-NVDA                          0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15
-SPY                           0x319724394D3A0e3669269846abE664Cd621f9f6A
-AAPL                          0x6B22A786bAa607d76728168703a39Ea9C99f2cD0
-QQQ                           0x80901d846d5D7B030F26B480776EE3b29374C2ae
-MSFT                          0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E
-AMZN                          0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C
-META                          0x7C38C00C30BEe9378381E7B6135d7283356D71b1
-GOOGL                         0xF6f373a037c30F0e5010d854385cA89185AE638b
+NVDA  (registered)                   0x379EC4f7C378F34a1B47E4F3cbeBCbAC3E8E9F15
+SPY   (registered)                   0x319724394D3A0e3669269846abE664Cd621f9f6A
+AAPL  (not registered yet)           0x6B22A786bAa607d76728168703a39Ea9C99f2cD0
+QQQ   (not registered yet)           0x80901d846d5D7B030F26B480776EE3b29374C2ae
+MSFT  (not registered yet)           0x45C3C877C15E6BA2EBB19eA114Ea508d14C1Af2E
+AMZN  (not registered yet)           0xD5a1508ceD74c084eBf3cBe853e2C968fB2a651C
+META  (not registered yet)           0x7C38C00C30BEe9378381E7B6135d7283356D71b1
+GOOGL (not registered yet)           0xF6f373a037c30F0e5010d854385cA89185AE638b
+
+## Deprecated — do not integrate, upgrade, or seed
+
+# Replaced hours later by the branded-proxy redeploy. Markets set inactive, 550k PLG recovered.
+2026-09-09a vault                    0xb2C7aC9020dB5C76930fbFEBF01043E41E46002c
+2026-09-09a oracle                   0xE8D4127542F262A46aE6C61223b05e10841F4672
+2026-09-09a surplus                  0x0fe86A3DFd3478CD4c840E27bffeeE9D72565912
+2026-09-09a pool                     0x45EA5b2Fc2a15493BADfBF534B3EB329F8b950c0
+2026-09-09a staking                  0xA317886027c83183C22d9526bd09e9837CBc38F6
+
+# Abandoned earlier
+PledgeVaultManager v0                0xf486F332A162CC4bb844506254a649C300D64e9b
+PledgeVaultManager v1                0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62
+PledgeVaultManager (never canonical) 0x1757a7BD9078001adD29d98Ba712DA7ba154C1AE
+PledgeChainlinkOracle v1             0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9
+PledgeSurplusBuffer v1               0xEa30446c46D61514f19c897224E65b13Fb0A826c
+PledgeStabilityPool v1               0x8570a571CC83f87B3Ca4249B71646Cc807350e14
+PledgeStaking v1                     0xBa0F48595D7CEfb6A1306A6929B496c2498fC73d

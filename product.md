@@ -7,7 +7,9 @@
 
 This is the only file you need to start. It covers **what the product is, why it exists, where it is going**, then the architecture, the math, every contract, the issues we already know about, the current on-chain state, and what we hope to get back from you.
 
-If this file conflicts with the code → **the code wins**. Canonical mainnet addresses are in [`deployments/4663.json`](deployments/4663.json). Solidity in **this** repo lives at `src/` (not a nested `contracts/` tree). The live vault is `0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62` — do **not** treat `0x1757…` as canonical.
+If this file conflicts with the code → **the code wins**. Canonical mainnet addresses are in [`deployments/4663.json`](deployments/4663.json). Solidity in **this** repo lives at `src/` (not a nested `contracts/` tree).
+
+> **Superseded 2026-09-09.** The protocol was fully redeployed. Every address quoted in the body of this briefing (vault `0x0dfd39…`, oracle `0x1952…`, surplus `0xEa30…`, pool `0x8570…`) is **deprecated**. The live vault is now `0x83B6F15BD3A7385C0F55BA3C685f688511279B00`. All five protocol contracts are fresh ERC1967 proxies, only NVDA and SPY are registered, and the surplus buffer and stability pool are now proxied too — which invalidates the "not a proxy" notes in §14 and §21. Read [`deployments/4663.json`](deployments/4663.json) and [`address-smartcontract`](address-smartcontract) for current addresses; the architecture, math, and known-issue sections below are still accurate.
 
 ---
 
@@ -703,23 +705,29 @@ Storage rule: **append-only**. New variables at the end of the live layout (`apr
 
 ## 21. Current on-chain state
 
-### Mainnet — Robinhood Chain 4663
+### Mainnet — Robinhood Chain 4663 (redeployed 2026-09-09)
 
-| Contract | Address | Notes |
+All five protocol contracts are ERC1967 proxies deployed fresh on 2026-09-09, verified on Sourcify with an exact match. Owner is still the deployer EOA `0x82FBf398…9e92`; the handover to the Timelock has not happened yet.
+
+Each proxy is an empty subclass of `ERC1967Proxy` defined in [`src/upgrade/PledgeFinanceProxies.sol`](src/upgrade/PledgeFinanceProxies.sol). They add no behavior; they exist so the address carries a Pledge Finance name in its verified metadata instead of the generic `ERC1967Proxy` that an explorer would otherwise display. Branding is only possible at deploy time, since a contract's name is bound to its bytecode.
+
+| Module | Proxy (use this) | Implementation |
 |---|---|---|
-| Vault (proxy) | `0x0dfd39ff00aFa2283A8c37770dB972aeC08AaB62` | **LIVE. Canonical. From [`deployments/4663.json`](deployments/4663.json)** |
-| Oracle | `0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9` | **`PledgeChainlinkOracle`**, `maxStaleness` = 4 days |
-| Surplus buffer | `0xEa30446c46D61514f19c897224E65b13Fb0A826c` | **Not a proxy** (legacy contract) |
-| Stability pool | `0x8570a571CC83f87B3Ca4249B71646Cc807350e14` | **Not a proxy**; parking only, not a backstop |
-| USDG (Paxos) | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` | **6 decimals** |
-| Old vault | `0xf486F332A162CC4bb844506254a649C300D64e9b` | Deprecated, ~10 USDG stuck (K-13) |
-| Non-canonical vault | `0x1757a7BD9078001adD29d98Ba712DA7ba154C1AE` | Unsafe script target — **do not upgrade** |
+| `PledgeFinanceVault` | `0x83B6F15BD3A7385C0F55BA3C685f688511279B00` | `0x0b8E032242A54a5373aed9968FEF01a9A0e0ec6F` |
+| `PledgeFinanceOracle` | `0xB11951Dba2A7cAF846e0A3484237d8E5844428b7` | `0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc` |
+| `PledgeFinanceSurplusBuffer` | `0xc6D477491ACE30fa5651ac61C735C2B636B095c4` | `0x5df0d2c7aB8443f41B84e684027eEB656e303C12` |
+| `PledgeFinanceStabilityPool` | `0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D` | `0x3fc952F815f63dE054446D4c3C16c57d6467635D` |
+| `PledgeFinanceStaking` | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0x4de94A31e0725270b047820293e784bb62363Be3` |
 
-Explorer: `robinhoodchain.blockscout.com`. Its API sits behind Cloudflare, so `forge verify-contract` usually fails; we use **Sourcify**.
+External, unchanged: USDG (Paxos) `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` at **6 decimals**, and PLG `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38`, reused from the launchpad and deliberately **not** upgradeable.
 
-**Eight markets** on the canonical vault. `registerMarket` args `500, 120, 50` mean **liq bonus 5% / APR 1.2% / origination 0.5%**. `liqRatioBps` is **not** 16600 for every name (SPY 13300, AAPL/MSFT 15300, etc. — see §22).
+Deprecated and abandoned — do not integrate, upgrade, or seed. The 2026-09-09a set was the first pass of this same redeploy, replaced hours later by the branded proxies above; its markets are set inactive and its 550k PLG reward reserve was recovered. Vault `0xb2C7aC90…`, oracle `0xE8D41275…`, surplus `0x0fe86A3D…`, pool `0x45EA5b2F…`, staking `0xA3178860…`. Older still: vault `0xf486…` (v0, ~10 USDG stuck), vault `0x0dfd39…` (v1), vault `0x1757…` (never canonical), oracle `0x1952…`, surplus `0xEa30…`, pool `0x8570…`, staking `0xBa0F4859…`.
 
-**USDG inventory in the vault proxy is 0.** The four-step smoke test has **not** been run on this proxy yet.
+Explorer: `robinhoodchain.blockscout.com`. Its API sits behind Cloudflare, so `forge verify-contract` fails against it; we use **Sourcify**.
+
+**Two markets** are registered, NVDA (`maxLtv 6000 / liqRatio 16600`) and SPY (`7500 / 13300`). Both share the fee triplet `500, 120, 50` = **liq bonus 5% / APR 1.2% / origination 0.5%**. The other six names in §22 are staged but not registered; add them only after the smoke test passes.
+
+**USDG inventory in the vault is 0** and the four-step smoke test has **not** run, because the deployer holds no USDG and no NVDA.
 
 ### Testnet — Robinhood Chain 46630
 
