@@ -5,7 +5,7 @@ import {Script, console2} from "forge-std/Script.sol";
 
 /// @title MainnetBase
 /// @notice Shared constants and helpers for the Robinhood Mainnet (4663) redeploy scripts.
-/// @dev External addresses (Paxos USDG, Robinhood stock tokens, Chainlink feeds, PLG, Timelock)
+/// @dev External addresses (Paxos USDG, Robinhood stock tokens, Chainlink feeds, PONS token, Timelock)
 ///      are hardcoded because they are already live and outside our control. Every Pledge
 ///      contract this redeploy produces is read from the environment instead, so no script can
 ///      ever silently target a stale protocol address.
@@ -14,7 +14,8 @@ abstract contract MainnetBase is Script {
 
     // --- External, already-live addresses ---
     address internal constant USDG = 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168;
-    address internal constant PLG = 0xDfC0a301CA6F62c32800C4827974ECac64BC7e38;
+    /// @dev Token launched via PONS. On-chain name/symbol are still Pledge Finance / PLG, 18 decimals.
+    address internal constant PONS = 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf;
 
     address internal constant NVDA = 0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC;
     address internal constant SPY = 0x117cc2133c37B721F49dE2A7a74833232B3B4C0C;

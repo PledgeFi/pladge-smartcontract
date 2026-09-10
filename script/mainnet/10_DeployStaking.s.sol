@@ -8,8 +8,8 @@ import {PledgeStaking} from "../../src/core/PledgeStaking.sol";
 import {MainnetBase} from "./MainnetBase.sol";
 
 /// @title DeployStakingMainnet
-/// @notice Step 10. Fresh staking proxy reusing the PLG token already live from the launchpad.
-/// @dev Two pools: PLG staked for PLG rewards over a 90 day program, and USDG staked for PLG at a
+/// @notice Step 10. Fresh staking proxy using the PONS-launched token.
+/// @dev Two pools: PONS staked for PONS rewards over a 90 day program, and USDG staked for PONS at a
 ///      zero rate until a rate is set. `fundRewards` moves the whole reward reserve up front
 ///      because the contract has no accounting that would stop `claim` reverting if underfunded.
 contract DeployStakingMainnet is MainnetBase {
@@ -21,10 +21,10 @@ contract DeployStakingMainnet is MainnetBase {
         address deployer = vm.addr(key);
         uint256 rewardRate = STAKING_REWARDS / PROGRAM_DURATION;
 
-        require(PLG.code.length > 0, "staking: PLG missing");
-        require(IERC20(PLG).balanceOf(deployer) >= STAKING_REWARDS, "staking: need 550k PLG");
+        require(PONS.code.length > 0, "staking: PONS missing");
+        require(IERC20(PONS).balanceOf(deployer) >= STAKING_REWARDS, "staking: need 550k PONS");
 
-        console2.log("PLG", PLG);
+        console2.log("PONS", PONS);
         console2.log("reward reserve", STAKING_REWARDS);
         console2.log("reward rate per second", rewardRate);
 
@@ -34,14 +34,14 @@ contract DeployStakingMainnet is MainnetBase {
             new PledgeFinanceStaking(address(implementation), abi.encodeCall(PledgeStaking.initialize, (deployer)));
         PledgeStaking staking = PledgeStaking(address(proxy));
 
-        uint256 plgPool = staking.addPool(PLG, PLG, rewardRate, 1 days, 90 days, true);
-        staking.setPoolName(plgPool, "PLG Staking");
+        uint256 ponsPool = staking.addPool(PONS, PONS, rewardRate, 1 days, 90 days, true);
+        staking.setPoolName(ponsPool, "PONS Staking");
 
-        uint256 usdgPool = staking.addPool(USDG, PLG, 0, 0, true);
+        uint256 usdgPool = staking.addPool(USDG, PONS, 0, 0, true);
         staking.setPoolName(usdgPool, "USDG Staking");
 
-        IERC20(PLG).approve(address(staking), STAKING_REWARDS);
-        staking.fundRewards(plgPool, STAKING_REWARDS);
+        IERC20(PONS).approve(address(staking), STAKING_REWARDS);
+        staking.fundRewards(ponsPool, STAKING_REWARDS);
         vm.stopBroadcast();
 
         require(staking.owner() == deployer, "staking: owner mismatch");
@@ -49,7 +49,7 @@ contract DeployStakingMainnet is MainnetBase {
 
         console2.log("implementation", address(implementation));
         console2.log("proxy (use this)", address(proxy));
-        console2.log("PLG pool id", plgPool);
+        console2.log("PONS pool id", ponsPool);
         console2.log("USDG pool id", usdgPool);
         console2.log("Next:");
         logExport("PLEDGE_STAKING_IMPL", address(implementation));
