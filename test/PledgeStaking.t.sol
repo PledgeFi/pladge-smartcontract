@@ -268,8 +268,11 @@ contract PledgeStakingTest is Test {
         vm.stopPrank();
 
         (,, uint256 lockedUntil, uint256 lockDuration,) = staking.getPosition(plgPool, alice);
-        assertEq(lockedUntil, originalUnlock);
-        assertEq(lockDuration, 1 days);
+        assertEq(lockedUntil, originalUnlock, "unlock date must not move");
+        // The shorter request does not take effect, so the recorded duration is what is still
+        // outstanding. Recording 1 day here would demote the boost on a position that stays
+        // locked for another 7.
+        assertEq(lockDuration, 7 days, "keeps the commitment still outstanding");
     }
 
     function test_addPoolWithMinAndMaxLock() public {
@@ -376,6 +379,218 @@ contract PledgeStakingTest is Test {
         vm.prank(bob);
         staking.unstake(plgPool, 1_000e18);
         assertEq(plg.balanceOf(bob) - bobBalanceBefore, 1_000e18 + bobPendingBefore);
+    }
+}
+
+contract PledgeStakingBoostTest is Test {
+    MockERC20 internal plg;
+    PledgeStaking internal staking;
+
+    address internal shortStaker = makeAddr("shortStaker");
+    address internal longStaker = makeAddr("longStaker");
+    address internal admin = makeAddr("admin");
+    address internal keeper = makeAddr("keeper");
+
+    uint256 internal pool;
+    uint256 internal constant BPS = 10_000;
+    uint256 internal constant RATE = 1e16;
+
+    function setUp() public {
+        plg = new MockERC20("Pledge Finance", "PLG", 18);
+        staking = new PledgeStaking(admin);
+
+        vm.startPrank(admin);
+        pool = staking.addPool(address(plg), address(plg), RATE, 1 days, 90 days, true);
+        staking.setMaxBoostBps(pool, 3 * BPS); // 3.00x at the longest lock
+        plg.mint(admin, 10_000_000e18);
+        plg.approve(address(staking), type(uint256).max);
+        staking.fundRewards(pool, 1_000_000e18);
+        vm.stopPrank();
+
+        // MockERC20's faucet has a per-caller cooldown, so each staker mints for itself.
+        vm.startPrank(shortStaker);
+        plg.mint(shortStaker, 1_000_000e18);
+        plg.approve(address(staking), type(uint256).max);
+        vm.stopPrank();
+
+        vm.startPrank(longStaker);
+        plg.mint(longStaker, 1_000_000e18);
+        plg.approve(address(staking), type(uint256).max);
+        vm.stopPrank();
+    }
+
+    function test_multiplierIsLinearBetweenMinAndMaxLock() public view {
+        assertEq(staking.multiplierBps(pool, 1 days), BPS, "shortest lock is 1.00x");
+        assertEq(staking.multiplierBps(pool, 90 days), 3 * BPS, "longest lock is 3.00x");
+
+        // Halfway through the range should land halfway to the cap.
+        uint256 mid = staking.multiplierBps(pool, 1 days + (89 days / 2));
+        assertApproxEqAbs(mid, 2 * BPS, 10, "midpoint is about 2.00x");
+
+        // Below the minimum and above the maximum both clamp.
+        assertEq(staking.multiplierBps(pool, 0), BPS);
+        assertEq(staking.multiplierBps(pool, 999 days), 3 * BPS);
+    }
+
+    function test_longLockEarnsThreeTimesTheShortLock() public {
+        vm.prank(shortStaker);
+        staking.stake(pool, 1_000e18, 1 days);
+        vm.prank(longStaker);
+        staking.stake(pool, 1_000e18, 90 days);
+
+        // Equal principal, so weight is entirely down to the lock.
+        assertEq(staking.userWeight(pool, shortStaker), 1_000e18);
+        assertEq(staking.userWeight(pool, longStaker), 3_000e18);
+        assertEq(staking.totalWeight(pool), 4_000e18);
+
+        vm.warp(block.timestamp + 12 hours);
+
+        uint256 shortPending = staking.pendingReward(pool, shortStaker);
+        uint256 longPending = staking.pendingReward(pool, longStaker);
+
+        assertApproxEqRel(longPending, shortPending * 3, 1e12, "3x lock earns 3x rewards");
+        assertApproxEqRel(shortPending + longPending, RATE * 12 hours, 1e12, "no reward conjured or lost");
+    }
+
+    function test_boostDisappearsWhenTheLockExpires() public {
+        vm.prank(longStaker);
+        staking.stake(pool, 1_000e18, 2 days);
+        assertGt(staking.userWeight(pool, longStaker), 1_000e18, "starts boosted");
+
+        vm.warp(block.timestamp + 2 days + 1);
+
+        // The view reports the truth immediately; storage has not caught up yet.
+        assertEq(staking.weightOf(pool, longStaker), 1_000e18, "expired position is worth 1.00x");
+        assertGt(staking.userWeight(pool, longStaker), 1_000e18, "stored weight is still stale");
+
+        // Anyone can correct it, not just the staker.
+        vm.prank(keeper);
+        staking.syncWeight(pool, longStaker);
+
+        assertEq(staking.userWeight(pool, longStaker), 1_000e18, "demoted to 1.00x");
+        assertEq(staking.totalWeight(pool), 1_000e18);
+    }
+
+    function test_syncingAnExpiredPositionDoesNotStealItsEarnedRewards() public {
+        vm.prank(longStaker);
+        staking.stake(pool, 1_000e18, 2 days);
+
+        vm.warp(block.timestamp + 2 days);
+        uint256 earned = staking.pendingReward(pool, longStaker);
+        assertGt(earned, 0);
+
+        uint256 balanceBefore = plg.balanceOf(longStaker);
+        vm.prank(keeper);
+        staking.syncWeight(pool, longStaker);
+
+        // syncWeight settles rather than discards: the rewards are paid out, not zeroed.
+        assertEq(plg.balanceOf(longStaker) - balanceBefore, earned, "earned rewards are paid, not lost");
+        assertEq(staking.pendingReward(pool, longStaker), 0);
+    }
+
+    function test_toppingUpDoesNotDemoteALongerRunningLock() public {
+        vm.startPrank(longStaker);
+        staking.stake(pool, 1_000e18, 90 days);
+        uint256 boostedWeight = staking.userWeight(pool, longStaker);
+
+        // Adding to the position with the shortest lock must not cost the 3.00x already committed.
+        staking.stake(pool, 1_000e18, 1 days);
+        vm.stopPrank();
+
+        assertApproxEqRel(staking.userWeight(pool, longStaker), boostedWeight * 2, 1e15, "still near 3.00x");
+        assertGt(staking.userWeight(pool, longStaker), 2_000e18, "did not silently fall back to 1.00x");
+    }
+
+    function test_unstakingReleasesWeight() public {
+        vm.prank(longStaker);
+        staking.stake(pool, 1_000e18, 90 days);
+        assertEq(staking.totalWeight(pool), 3_000e18);
+
+        vm.warp(block.timestamp + 90 days);
+        vm.prank(longStaker);
+        staking.unstake(pool, 1_000e18);
+
+        assertEq(staking.userWeight(pool, longStaker), 0);
+        assertEq(staking.totalWeight(pool), 0, "weight must not outlive the stake");
+    }
+
+    function test_emergencyWithdrawReleasesWeight() public {
+        vm.prank(longStaker);
+        staking.stake(pool, 1_000e18, 1 days);
+        vm.warp(block.timestamp + 1 days);
+
+        vm.prank(longStaker);
+        staking.emergencyWithdraw(pool);
+
+        assertEq(staking.userWeight(pool, longStaker), 0);
+        assertEq(staking.totalWeight(pool), 0);
+    }
+
+    function test_boostOffBehavesExactlyLikeBefore() public {
+        vm.prank(admin);
+        staking.setMaxBoostBps(pool, 0);
+
+        vm.prank(shortStaker);
+        staking.stake(pool, 1_000e18, 1 days);
+        vm.prank(longStaker);
+        staking.stake(pool, 1_000e18, 90 days);
+
+        assertEq(staking.userWeight(pool, shortStaker), 1_000e18);
+        assertEq(staking.userWeight(pool, longStaker), 1_000e18, "no boost means weight is just principal");
+
+        vm.warp(block.timestamp + 1 days);
+        assertEq(
+            staking.pendingReward(pool, shortStaker),
+            staking.pendingReward(pool, longStaker),
+            "equal stakes earn equally"
+        );
+    }
+
+    function test_revertsOnAbsurdBoost() public {
+        vm.startPrank(admin);
+        vm.expectRevert(PledgeStaking.InvalidBoost.selector);
+        staking.setMaxBoostBps(pool, BPS - 1); // below 1.00x would cut principal
+        vm.expectRevert(PledgeStaking.InvalidBoost.selector);
+        staking.setMaxBoostBps(pool, 11 * BPS); // beyond the 10x cap
+        vm.stopPrank();
+    }
+
+    function test_projectedAprFallsAsThePoolFillsUp() public {
+        uint256 aprAlone = staking.projectedAprBps(pool, 1_000e18, 90 days);
+        assertGt(aprAlone, 0);
+
+        vm.prank(shortStaker);
+        staking.stake(pool, 100_000e18, 1 days);
+
+        uint256 aprCrowded = staking.projectedAprBps(pool, 1_000e18, 90 days);
+        assertLt(aprCrowded, aprAlone, "more stakers means a smaller slice each");
+
+        // The long lock must still beat the short one at any level of crowding.
+        assertGt(
+            staking.projectedAprBps(pool, 1_000e18, 90 days),
+            staking.projectedAprBps(pool, 1_000e18, 1 days),
+            "locking longer always pays better"
+        );
+    }
+
+    function test_projectedAprIsZeroWithoutAReserve() public {
+        vm.startPrank(admin);
+        (,,,,,,,,, uint256 reserve) = staking.pools(pool);
+        staking.withdrawRewards(pool, admin, reserve);
+        vm.stopPrank();
+
+        assertEq(staking.projectedAprBps(pool, 1_000e18, 90 days), 0, "an empty pool must not advertise an APR");
+    }
+
+    function test_noEmissionIsBurnedWhileThePoolIsEmpty() public {
+        (,,,,,,,,, uint256 reserveBefore) = staking.pools(pool);
+        vm.warp(block.timestamp + 30 days);
+
+        vm.prank(shortStaker);
+        staking.stake(pool, 1_000e18, 1 days);
+
+        (,,,,,,,,, uint256 reserveAfter) = staking.pools(pool);
+        assertEq(reserveAfter, reserveBefore, "30 idle days must not drain the reserve");
     }
 }
 

@@ -17,6 +17,8 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
 
     uint256 public constant ACC_PRECISION = 1e18;
     uint256 public constant EPOCH_DURATION = 7 days;
+    /// @dev 10_000 bps = 1.00x. A pool's `maxBoostBps` of 30_000 means 3.00x at the longest lock.
+    uint256 public constant BPS = 10_000;
 
     string public constant name = "Pledge Finance Staking";
     string public constant version = "1.0.0";
@@ -46,6 +48,18 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     mapping(uint256 poolId => mapping(address account => UserInfo)) public users;
     mapping(uint256 poolId => string) public poolNames;
 
+    // --- Lock boost. Appended after poolNames; slots 0-4 above are untouched so this ships as a
+    //     plain implementation upgrade. Weight, not principal, is what rewards are divided by.
+    //     PoolInfo could not carry these: it lives in a dynamic array, where adding a field shifts
+    //     every element. Parallel mappings sidestep that entirely.
+
+    /// @notice Sum of every staker's weight in a pool. Rewards are divided by this, not totalStaked.
+    mapping(uint256 poolId => uint256) public totalWeight;
+    /// @notice A staker's `amount * multiplier`. Rebuilt whenever their stake or lock changes.
+    mapping(uint256 poolId => mapping(address account => uint256)) public userWeight;
+    /// @notice Multiplier at the pool's longest lock, in bps. 0 or <= BPS disables the boost.
+    mapping(uint256 poolId => uint256) public maxBoostBps;
+
     event PoolAdded(
         uint256 indexed poolId, address stakeToken, address rewardToken, uint256 minLockDuration, uint256 lockDuration
     );
@@ -61,6 +75,8 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     event RewardsFunded(uint256 indexed poolId, address indexed from, uint256 amount);
     event RewardsWithdrawn(uint256 indexed poolId, address indexed to, uint256 amount);
     event PoolNamed(uint256 indexed poolId, string name);
+    event MaxBoostUpdated(uint256 indexed poolId, uint256 maxBoostBps);
+    event WeightUpdated(uint256 indexed poolId, address indexed user, uint256 weight, uint256 totalWeight);
 
     error PoolInactive();
     error ZeroAmount();
@@ -69,6 +85,8 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     error InvalidPool();
     error InsufficientRewardReserve();
     error InvalidLockDuration();
+    error InvalidBoost();
+    error PoolNotEmpty();
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor(address owner_) {
@@ -163,6 +181,41 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
         emit LockDurationUpdated(poolId, minLockDuration, lockDuration);
     }
 
+    /// @notice Set the multiplier earned at the pool's longest lock. `BPS` (10_000) disables it.
+    /// @dev Rebuilding every staker's weight here would be an unbounded loop, so open positions
+    ///      keep their old weight until something syncs them. That is self-correcting: if the boost
+    ///      was lowered, the other stakers are diluted until they call `syncWeight` on the stale
+    ///      position; if it was raised, the staker is short-changed until they sync themselves.
+    function setMaxBoostBps(uint256 poolId, uint256 boostBps) external onlyOwner {
+        _pool(poolId);
+        // A cap keeps one long-locked whale from crowding everyone else out of the emission.
+        if (boostBps != 0 && (boostBps < BPS || boostBps > 10 * BPS)) revert InvalidBoost();
+        _updatePool(poolId);
+        maxBoostBps[poolId] = boostBps;
+        emit MaxBoostUpdated(poolId, boostBps);
+    }
+
+    /// @notice What a stake would earn per year, in bps of the staked amount, at a given lock.
+    /// @dev Quoted as if `addedAmount` were staked now and nothing else changed. It is a
+    ///      projection, not a promise: every later stake dilutes it, and it runs only as long as
+    ///      `rewardReserve` lasts. Returns 0 once the reserve is empty, because that is the truth.
+    function projectedAprBps(uint256 poolId, uint256 addedAmount, uint256 lockDuration)
+        external
+        view
+        returns (uint256)
+    {
+        PoolInfo storage pool = _pool(poolId);
+        if (addedAmount == 0 || pool.rewardRatePerSecond == 0 || pool.rewardReserve == 0 || !pool.active) return 0;
+
+        uint256 weight = (addedAmount * multiplierBps(poolId, lockDuration)) / BPS;
+        uint256 newTotalWeight = totalWeight[poolId] + weight;
+        if (newTotalWeight == 0) return 0;
+
+        uint256 annualEmission = pool.rewardRatePerSecond * 365 days;
+        uint256 share = (annualEmission * weight) / newTotalWeight;
+        return (share * BPS) / addedAmount;
+    }
+
     function setPoolName(uint256 poolId, string calldata name_) external onlyOwner {
         _pool(poolId);
         poolNames[poolId] = name_;
@@ -203,20 +256,35 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
         emit RewardsWithdrawn(poolId, to, amount);
     }
 
+    /// @dev Uses the STORED weight, not `weightOf`. Rewards accrue against whatever weight the pool
+    ///      is currently counting, so an expired position keeps earning at its old boost until
+    ///      someone calls `syncWeight`. Quoting the fresh weight here would report rewards the
+    ///      contract will not actually pay.
     function pendingReward(uint256 poolId, address account) public view returns (uint256) {
-        PoolInfo memory pool = _pool(poolId);
-        UserInfo memory user = users[poolId][account];
-        if (user.amount == 0) return 0;
+        _pool(poolId);
+        uint256 weight = userWeight[poolId][account];
+        if (weight == 0) return 0;
 
-        uint256 acc = pool.accRewardPerShare;
-        uint256 reward = _pendingEmission(pool);
+        uint256 acc = _pools[poolId].accRewardPerShare;
+        uint256 reward = _pendingEmission(poolId);
         if (reward > 0) {
-            acc += (reward * ACC_PRECISION) / pool.totalStaked;
+            acc += (reward * ACC_PRECISION) / totalWeight[poolId];
         }
 
-        uint256 accumulated = (user.amount * acc) / ACC_PRECISION;
-        if (accumulated <= user.rewardDebt) return 0;
-        return accumulated - user.rewardDebt;
+        uint256 accumulated = (weight * acc) / ACC_PRECISION;
+        uint256 debt = users[poolId][account].rewardDebt;
+        if (accumulated <= debt) return 0;
+        return accumulated - debt;
+    }
+
+    /// @notice Bring an account's weight up to date. Anyone may call this for anyone.
+    /// @dev Permissionless on purpose. A position whose lock has expired keeps its boost until it
+    ///      is synced, diluting everyone else, so the other stakers have both the motive and the
+    ///      means to fix it. The same call also picks up a `maxBoostBps` change.
+    function syncWeight(uint256 poolId, address account) external nonReentrant returns (uint256 weight) {
+        _updatePool(poolId);
+        _harvest(poolId, account);
+        return _syncWeight(poolId, account);
     }
 
     /// @notice Stake using the pool's maximum lock duration.
@@ -241,12 +309,14 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
         if (block.timestamp < user.lockedUntil) revert LockActive();
 
         user.amount -= amount;
-        user.rewardDebt = (user.amount * pool.accRewardPerShare) / ACC_PRECISION;
         if (user.amount == 0) {
             user.lockDuration = 0;
             user.lockedUntil = 0;
         }
         pool.totalStaked -= amount;
+
+        _syncWeight(poolId, msg.sender);
+
         pool.stakeToken.safeTransfer(msg.sender, amount);
 
         emit Unstaked(poolId, msg.sender, amount);
@@ -280,6 +350,11 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
         user.lockedUntil = 0;
         user.lockDuration = 0;
         pool.totalStaked -= amount;
+
+        totalWeight[poolId] -= userWeight[poolId][msg.sender];
+        userWeight[poolId][msg.sender] = 0;
+        emit WeightUpdated(poolId, msg.sender, 0, totalWeight[poolId]);
+
         pool.stakeToken.safeTransfer(msg.sender, amount);
 
         emit EmergencyWithdrawn(poolId, msg.sender, amount);
@@ -327,19 +402,28 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
 
         UserInfo storage user = users[poolId][msg.sender];
         user.amount += amount;
-        user.rewardDebt = (user.amount * pool.accRewardPerShare) / ACC_PRECISION;
-        uint256 newLockedUntil = block.timestamp + lockDuration;
-        if (newLockedUntil > user.lockedUntil) user.lockedUntil = newLockedUntil;
-        user.lockDuration = lockDuration;
         pool.totalStaked += amount;
 
-        emit Staked(poolId, msg.sender, amount, lockDuration, user.lockedUntil);
+        uint256 newLockedUntil = block.timestamp + lockDuration;
+        if (newLockedUntil > user.lockedUntil) {
+            user.lockedUntil = newLockedUntil;
+            user.lockDuration = lockDuration;
+        } else {
+            // The existing lock runs longer, so it stands. Record what is still outstanding rather
+            // than the shorter duration just requested: topping up a position must not quietly
+            // demote the boost it is still committed to earning.
+            user.lockDuration = user.lockedUntil - block.timestamp;
+        }
+
+        _syncWeight(poolId, msg.sender);
+
+        emit Staked(poolId, msg.sender, amount, user.lockDuration, user.lockedUntil);
     }
 
     function _harvest(uint256 poolId, address account) internal {
         PoolInfo storage pool = _pools[poolId];
         UserInfo storage user = users[poolId][account];
-        uint256 accumulated = (user.amount * pool.accRewardPerShare) / ACC_PRECISION;
+        uint256 accumulated = (userWeight[poolId][account] * pool.accRewardPerShare) / ACC_PRECISION;
         if (accumulated <= user.rewardDebt) {
             user.rewardDebt = accumulated;
             return;
@@ -355,22 +439,67 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
 
     function _updatePool(uint256 poolId) internal {
         PoolInfo storage pool = _pool(poolId);
-        uint256 reward = _pendingEmission(pool);
+        uint256 reward = _pendingEmission(poolId);
         if (reward > 0) {
-            pool.accRewardPerShare += (reward * ACC_PRECISION) / pool.totalStaked;
+            pool.accRewardPerShare += (reward * ACC_PRECISION) / totalWeight[poolId];
             pool.rewardReserve -= reward;
         }
         pool.lastUpdateTime = block.timestamp;
     }
 
-    function _pendingEmission(PoolInfo memory pool) internal view returns (uint256 reward) {
-        if (!pool.active || pool.totalStaked == 0 || pool.rewardRatePerSecond == 0 || pool.rewardReserve == 0) {
+    /// @dev Gated on totalWeight, not totalStaked: it is the divisor in `_updatePool`, and the two
+    ///      differ once a boost is live. Emitting while the divisor is zero would burn reserve.
+    function _pendingEmission(uint256 poolId) internal view returns (uint256 reward) {
+        PoolInfo storage pool = _pools[poolId];
+        if (!pool.active || totalWeight[poolId] == 0 || pool.rewardRatePerSecond == 0 || pool.rewardReserve == 0) {
             return 0;
         }
         uint256 elapsed = block.timestamp - pool.lastUpdateTime;
         if (elapsed == 0) return 0;
         reward = elapsed * pool.rewardRatePerSecond;
         if (reward > pool.rewardReserve) reward = pool.rewardReserve;
+    }
+
+    /// @notice Multiplier in bps a given lock would earn in this pool. BPS (10_000) means 1.00x.
+    /// @dev Linear from 1.00x at `minLockDuration` to `maxBoostBps` at `lockDuration`.
+    function multiplierBps(uint256 poolId, uint256 lockDuration) public view returns (uint256) {
+        PoolInfo storage pool = _pool(poolId);
+        uint256 maxBoost = maxBoostBps[poolId];
+        if (maxBoost <= BPS) return BPS;
+
+        uint256 span = pool.lockDuration - pool.minLockDuration;
+        if (span == 0) return BPS;
+
+        if (lockDuration <= pool.minLockDuration) return BPS;
+        uint256 over = lockDuration - pool.minLockDuration;
+        if (over > span) over = span;
+
+        return BPS + ((maxBoost - BPS) * over) / span;
+    }
+
+    /// @notice Weight this account should carry right now.
+    /// @dev Once the lock has run out the boost is gone: an expired position earns at 1.00x like
+    ///      any unlocked one. The stored weight only catches up when something calls `_syncWeight`,
+    ///      which is why `syncWeight` is permissionless.
+    function weightOf(uint256 poolId, address account) public view returns (uint256) {
+        UserInfo storage user = users[poolId][account];
+        if (user.amount == 0) return 0;
+        if (block.timestamp >= user.lockedUntil) return user.amount;
+        return (user.amount * multiplierBps(poolId, user.lockDuration)) / BPS;
+    }
+
+    /// @dev Writes the weight and keeps `totalWeight` in step. Callers MUST `_updatePool` and
+    ///      `_harvest` first: `rewardDebt` is denominated in the old weight, so changing the weight
+    ///      without settling would silently re-price every reward already earned.
+    function _syncWeight(uint256 poolId, address account) internal returns (uint256 weight) {
+        weight = weightOf(poolId, account);
+        uint256 previous = userWeight[poolId][account];
+        if (weight != previous) {
+            totalWeight[poolId] = totalWeight[poolId] - previous + weight;
+            userWeight[poolId][account] = weight;
+            emit WeightUpdated(poolId, account, weight, totalWeight[poolId]);
+        }
+        users[poolId][account].rewardDebt = (weight * _pools[poolId].accRewardPerShare) / ACC_PRECISION;
     }
 
     function _pool(uint256 poolId) internal view returns (PoolInfo storage pool) {
