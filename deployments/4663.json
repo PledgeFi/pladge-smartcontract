@@ -74,7 +74,7 @@
         "lock": "90 days",
         "rewardReserve": "0",
         "rewardRatePerSecond": "70730452674897119",
-        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted, so this stays visible forever; its on-chain name still collides with pool 2 and should be renamed to 'PLG Staking (retired)'."
+        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted, so this stays visible forever. Its name collides with pool 2, so script/mainnet/13_RenameStakingPools.s.sol renames it to 'PLG Staking (retired)' first."
       },
       "1": {
         "name": "USDG Staking",
@@ -86,7 +86,7 @@
         "rewardReserve": "0"
       },
       "2": {
-        "name": "PONS Staking",
+        "name": "PLG Staking",
         "status": "active but unfunded",
         "stakeToken": "PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
         "rewardToken": "PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
@@ -94,7 +94,8 @@
         "lock": "90 days",
         "rewardReserve": "0",
         "rewardRatePerSecond": "70730452674897119",
-        "note": "The canonical pool. Its on-chain name is still 'PONS Staking' and must be renamed to 'PLG Staking'; setPoolName is the only way to change it. Reserve is 0, so it currently pays nothing: fund it with 550000e18 for a 90 day program before opening it."
+        "nameNotYetAppliedOnChain": "Storage still holds the old launch-era name. The frontend renders pool names verbatim, so users see the stale one until script/mainnet/13_RenameStakingPools.s.sol runs.",
+        "note": "The canonical pool. Reserve is 0, so it currently pays nothing: fund it with 550000e18 for a 90 day program before opening it."
       }
     }
   },
