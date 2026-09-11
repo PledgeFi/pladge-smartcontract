@@ -102,7 +102,8 @@
         "rewardRatePerSecond": "70730452674897119",
         "maxBoostBps": "30000",
         "note": "The canonical pool. Renamed from 'PONS Staking' on 2026-09-12. Deactivated the same day with setPoolActive(2,false) because the reserve is 0: leaving it open would have let people stake into a pool that pays nothing. Fund it with 550000e18 for a 90 day program, then reopen it.",
-        "funding": "fundRewards carries no onlyOwner, so any PLG holder can fund this pool directly; the supply does not need routing through the owner EOA first. The wallet earmarked for it is 0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055, which held 0 PLG and 0 native as of 2026-09-12 and needs both before it can send anything. Reopening the pool afterwards is owner-only."
+        "funding": "fundRewards carries no onlyOwner, so any PLG holder can fund this pool directly. Operationally the plan is to send PLG to the owner EOA 0x82FBf398..., which already carries native for gas. A wallet with PLG but no native cannot send anything at all, including moving its own PLG out: 0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055 received 1017 PLG on 2026-09-12 with a zero native balance and is stranded until it is topped up. Fund gas first, tokens second. Reopening the pool afterwards is owner-only.",
+        "budget": "At the current 70730452674897119 wei/sec the pool pays 6111.11 PLG per day: 42778 PLG for 7 days, 183333 for 30, 550000 for 90. Anything materially smaller needs setRewardRate lowered to match, or the reserve drains in hours."
       }
     }
   },
