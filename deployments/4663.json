@@ -52,7 +52,7 @@
     "PledgeChainlinkOracle": "0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc",
     "PledgeSurplusBuffer": "0x5df0d2c7aB8443f41B84e684027eEB656e303C12",
     "PledgeStabilityPool": "0x3fc952F815f63dE054446D4c3C16c57d6467635D",
-    "PledgeStaking": "0x4de94A31e0725270b047820293e784bb62363Be3"
+    "PledgeStaking": "0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5"
   },
   "upgradeRules": {
     "pattern": "UUPS behind ERC1967. Upgrade with upgradeToAndCall(newImpl, \"\") from the owner.",
@@ -61,7 +61,11 @@
   },
   "staking": {
     "proxy": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
-    "implementation": "0x4de94A31e0725270b047820293e784bb62363Be3",
+    "implementation": "0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5",
+    "previousImplementation": "0x4de94A31e0725270b047820293e784bb62363Be3",
+    "upgradedAt": "2026-09-12",
+    "upgradeNote": "script/mainnet/14_UpgradeStakingWithBoost.s.sol. Adds emergencyWithdraw and the lock boost. Rewards are now divided by weight (amount * multiplier) rather than by amount, so accRewardPerShare changed basis. That was only safe because every pool was empty; repeating this kind of change once anyone is staked needs a fresh proxy and a migration, since rewardDebt on an open position cannot be rewritten.",
+    "lockBoost": "Pool 2 is set to maxBoostBps 30000, i.e. 3.00x at the 90 day lock tapering linearly to 1.00x at 1 day. The boost lapses when a staker's lock expires; syncWeight is permissionless so anyone can true up a stale position. Adjustable via setMaxBoostBps within 1x-10x without another upgrade.",
     "onlyLivePool": "Pool 2. It stakes and rewards PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf. Pools 0 and 1 are retired and can never be deleted or re-pointed: `_pools` is append-only and a pool's tokens are fixed at addPool with no setter. Both are inactive and hidden by the frontend.",
     "rewardToken": "PLG 0x1BE30101 going forward; pools 0/1 were seeded with the old launchpad PLG 0xDfC0a301 and are retired",
     "canonicalToken": "0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",

@@ -58,7 +58,8 @@ Pages:
 1. `PledgeChainlinkOracle` — https://robinhoodchain.blockscout.com/address/0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc/contract-verification
 2. `PledgeSurplusBuffer` — https://robinhoodchain.blockscout.com/address/0x5df0d2c7aB8443f41B84e684027eEB656e303C12/contract-verification
 3. `PledgeStabilityPool` — https://robinhoodchain.blockscout.com/address/0x3fc952F815f63dE054446D4c3C16c57d6467635D/contract-verification
-4. `PledgeStaking` — https://robinhoodchain.blockscout.com/address/0x4de94A31e0725270b047820293e784bb62363Be3/contract-verification
+4. `PledgeStaking` — https://robinhoodchain.blockscout.com/address/0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5/contract-verification
+   (the live implementation since the 2026-09-12 boost upgrade; the retired `0x4de94A31e0725270b047820293e784bb62363Be3` is already verified and needs nothing)
 5. `PledgeVaultManager` — https://robinhoodchain.blockscout.com/address/0x0b8E032242A54a5373aed9968FEF01a9A0e0ec6F/contract-verification
 6. `PledgeFinanceVault` — https://robinhoodchain.blockscout.com/address/0x83B6F15BD3A7385C0F55BA3C685f688511279B00/contract-verification
 7. `PledgeFinanceOracle` — https://robinhoodchain.blockscout.com/address/0xB11951Dba2A7cAF846e0A3484237d8E5844428b7/contract-verification
@@ -121,4 +122,4 @@ Run this outside a sandbox; Foundry needs write access to its own cache director
 | Oracle | `0xB11951Dba2A7cAF846e0A3484237d8E5844428b7` | `0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc` |
 | Surplus Buffer | `0xc6D477491ACE30fa5651ac61C735C2B636B095c4` | `0x5df0d2c7aB8443f41B84e684027eEB656e303C12` |
 | Stability Pool | `0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D` | `0x3fc952F815f63dE054446D4c3C16c57d6467635D` |
-| Staking | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0x4de94A31e0725270b047820293e784bb62363Be3` |
+| Staking | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5` |

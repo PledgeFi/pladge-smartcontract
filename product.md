@@ -717,7 +717,7 @@ Each proxy is an empty subclass of `ERC1967Proxy` defined in [`src/upgrade/Pledg
 | `PledgeFinanceOracle` | `0xB11951Dba2A7cAF846e0A3484237d8E5844428b7` | `0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc` |
 | `PledgeFinanceSurplusBuffer` | `0xc6D477491ACE30fa5651ac61C735C2B636B095c4` | `0x5df0d2c7aB8443f41B84e684027eEB656e303C12` |
 | `PledgeFinanceStabilityPool` | `0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D` | `0x3fc952F815f63dE054446D4c3C16c57d6467635D` |
-| `PledgeFinanceStaking` | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0x4de94A31e0725270b047820293e784bb62363Be3` |
+| `PledgeFinanceStaking` | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5` |
 
 External, unchanged: USDG (Paxos) `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` at **6 decimals**, and PLG `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` (18 decimals). The old launchpad PLG `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38` is unused but reports the same `PLG` symbol, so match on address.
 

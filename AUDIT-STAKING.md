@@ -10,7 +10,7 @@ Report only. No Solidity was changed and no on-chain action was taken as part of
 | Compiler | `v0.8.24+commit.e11b9ed9`, optimizer on, 200 runs, EVM `cancun` |
 | Chain | Robinhood Mainnet, chainId 4663 |
 | Proxy | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` (`PledgeFinanceStaking`) |
-| Implementation | `0x4de94A31e0725270b047820293e784bb62363Be3` (read from the ERC-1967 slot, matches the docs) |
+| Implementation | `0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5` (read from the ERC-1967 slot). Replaced `0x4de94A31e0725270b047820293e784bb62363Be3` on 2026-09-12 to add `emergencyWithdraw` and the lock boost. |
 | On-chain state read | 2026-09-12, via `rpc.mainnet.chain.robinhood.com` |
 
 Files reviewed:
