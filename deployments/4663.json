@@ -101,7 +101,8 @@
         "rewardReserve": "0",
         "rewardRatePerSecond": "70730452674897119",
         "maxBoostBps": "30000",
-        "note": "The canonical pool. Renamed from 'PONS Staking' on 2026-09-12. Deactivated the same day with setPoolActive(2,false) because the reserve is 0: leaving it open would have let people stake into a pool that pays nothing. Fund it with 550000e18 for a 90 day program, then reopen it. The owner EOA holds 0 PLG as of 2026-09-12, so the supply has to be moved there first."
+        "note": "The canonical pool. Renamed from 'PONS Staking' on 2026-09-12. Deactivated the same day with setPoolActive(2,false) because the reserve is 0: leaving it open would have let people stake into a pool that pays nothing. Fund it with 550000e18 for a 90 day program, then reopen it.",
+        "funding": "fundRewards carries no onlyOwner, so any PLG holder can fund this pool directly; the supply does not need routing through the owner EOA first. The wallet earmarked for it is 0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055, which held 0 PLG and 0 native as of 2026-09-12 and needs both before it can send anything. Reopening the pool afterwards is owner-only."
       }
     }
   },
