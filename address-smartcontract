@@ -40,7 +40,7 @@ PledgeVaultManager                   0x0b8E032242A54a5373aed9968FEF01a9A0e0ec6F
 PledgeChainlinkOracle                0x428AceFE3bc2Da5a4B9b1615Ae066Bf81Be794cc
 PledgeSurplusBuffer                  0x5df0d2c7aB8443f41B84e684027eEB656e303C12
 PledgeStabilityPool                  0x3fc952F815f63dE054446D4c3C16c57d6467635D
-PledgeStaking                        0x4de94A31e0725270b047820293e784bb62363Be3
+PledgeStaking                        0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5
 
 ## Governance (handover still pending — owner is the deployer EOA)
 
