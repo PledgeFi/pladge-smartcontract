@@ -53,6 +53,7 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
         uint256 indexed poolId, address indexed user, uint256 amount, uint256 lockDuration, uint256 lockedUntil
     );
     event Unstaked(uint256 indexed poolId, address indexed user, uint256 amount);
+    event EmergencyWithdrawn(uint256 indexed poolId, address indexed user, uint256 amount);
     event RewardClaimed(uint256 indexed poolId, address indexed user, uint256 amount);
     event RewardRateUpdated(uint256 indexed poolId, uint256 rewardRatePerSecond);
     event PoolActiveUpdated(uint256 indexed poolId, bool active);
@@ -254,6 +255,34 @@ contract PledgeStaking is PledgeUupsOwnable, ReentrancyGuard {
     function claim(uint256 poolId) external nonReentrant {
         _updatePool(poolId);
         _harvest(poolId, msg.sender);
+    }
+
+    /// @notice Withdraw principal without touching the reward token, forfeiting unclaimed rewards.
+    /// @dev `unstake` harvests first, so a reward token that reverts on transfer would strand
+    ///      principal. This path never calls the reward token, so principal is always recoverable.
+    ///      The lock is still enforced; this is an escape from a broken reward leg, not from the lock.
+    function emergencyWithdraw(uint256 poolId) external nonReentrant returns (uint256 amount) {
+        PoolInfo storage pool = _pool(poolId);
+        UserInfo storage user = users[poolId][msg.sender];
+
+        amount = user.amount;
+        if (amount == 0) revert InsufficientStake();
+        if (block.timestamp < user.lockedUntil) revert LockActive();
+
+        // Settle accrual at the current totalStaked before shrinking it. Skipping this would
+        // re-divide the elapsed emission among the remaining stakers, retroactively handing
+        // them the leaver's share. This is pure arithmetic with no external call, so it cannot
+        // reintroduce the failure mode this function exists to escape.
+        _updatePool(poolId);
+
+        user.amount = 0;
+        user.rewardDebt = 0;
+        user.lockedUntil = 0;
+        user.lockDuration = 0;
+        pool.totalStaked -= amount;
+        pool.stakeToken.safeTransfer(msg.sender, amount);
+
+        emit EmergencyWithdrawn(poolId, msg.sender, amount);
     }
 
     function _addPool(

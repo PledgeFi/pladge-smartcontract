@@ -279,4 +279,143 @@ contract PledgeStakingTest is Test {
         assertEq(minLock, 3 days);
         assertEq(maxLock, 14 days);
     }
+
+    function test_emergencyWithdrawReturnsPrincipalAndForfeitsRewards() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 1_000e18);
+
+        vm.warp(block.timestamp + 7 days);
+        assertGt(staking.pendingReward(plgPool, alice), 0, "should have accrued");
+
+        uint256 balanceBefore = plg.balanceOf(alice);
+        uint256 recovered = staking.emergencyWithdraw(plgPool);
+        vm.stopPrank();
+
+        assertEq(recovered, 1_000e18);
+        assertEq(plg.balanceOf(alice) - balanceBefore, 1_000e18, "principal only, no rewards");
+
+        (uint256 amount,, uint256 lockedUntil,,) = staking.getPosition(plgPool, alice);
+        assertEq(amount, 0);
+        assertEq(lockedUntil, 0);
+        assertEq(staking.pendingReward(plgPool, alice), 0, "reward claim is forfeited");
+
+        (,,, uint256 totalStaked,,,,,,) = staking.pools(plgPool);
+        assertEq(totalStaked, 0);
+    }
+
+    /// @dev The reason this function exists: `unstake` harvests first, so a reward token that
+    ///      reverts on transfer would otherwise strand principal permanently.
+    function test_emergencyWithdrawRescuesPrincipalWhenRewardTransferReverts() public {
+        RevertingERC20 brokenReward = new RevertingERC20();
+
+        vm.startPrank(admin);
+        uint256 poolId = staking.addPool(address(plg), address(brokenReward), 1e16, 0, 0, true);
+        brokenReward.mint(admin, 100_000e18);
+        brokenReward.approve(address(staking), type(uint256).max);
+        staking.fundRewards(poolId, 100_000e18);
+        vm.stopPrank();
+
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(poolId, 1_000e18);
+        vm.warp(block.timestamp + 1 days);
+
+        brokenReward.setRevertOnTransfer(true);
+
+        vm.expectRevert(RevertingERC20.TransferDisabled.selector);
+        staking.unstake(poolId, 1_000e18);
+
+        vm.expectRevert(RevertingERC20.TransferDisabled.selector);
+        staking.claim(poolId);
+
+        uint256 balanceBefore = plg.balanceOf(alice);
+        staking.emergencyWithdraw(poolId);
+        vm.stopPrank();
+
+        assertEq(plg.balanceOf(alice) - balanceBefore, 1_000e18, "principal recovered");
+    }
+
+    function test_revertsEmergencyWithdrawDuringLock() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 500e18);
+        vm.expectRevert(PledgeStaking.LockActive.selector);
+        staking.emergencyWithdraw(plgPool);
+        vm.stopPrank();
+    }
+
+    function test_revertsEmergencyWithdrawWithoutStake() public {
+        vm.prank(bob);
+        vm.expectRevert(PledgeStaking.InsufficientStake.selector);
+        staking.emergencyWithdraw(plgPool);
+    }
+
+    function test_emergencyWithdrawLeavesOtherStakersWhole() public {
+        vm.startPrank(alice);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 1_000e18);
+        vm.stopPrank();
+
+        vm.startPrank(bob);
+        plg.approve(address(staking), type(uint256).max);
+        staking.stake(plgPool, 1_000e18);
+        vm.stopPrank();
+
+        vm.warp(block.timestamp + 7 days);
+        uint256 bobPendingBefore = staking.pendingReward(plgPool, bob);
+
+        vm.prank(alice);
+        staking.emergencyWithdraw(plgPool);
+
+        // Bob keeps exactly his own share. Alice's forfeited share is not redistributed to him,
+        // which would otherwise be a retroactive payout for a period she was still staked.
+        assertEq(staking.pendingReward(plgPool, bob), bobPendingBefore, "bob unaffected");
+
+        uint256 bobBalanceBefore = plg.balanceOf(bob);
+        vm.prank(bob);
+        staking.unstake(plgPool, 1_000e18);
+        assertEq(plg.balanceOf(bob) - bobBalanceBefore, 1_000e18 + bobPendingBefore);
+    }
+}
+
+/// @dev Reward token whose `transfer` can be switched off while `transferFrom` keeps working,
+///      so a pool can be funded and then have its payout leg break.
+contract RevertingERC20 {
+    error TransferDisabled();
+
+    string public name = "Broken";
+    string public symbol = "BRK";
+    uint8 public decimals = 18;
+    bool public revertOnTransfer;
+
+    mapping(address => uint256) public balanceOf;
+    mapping(address => mapping(address => uint256)) public allowance;
+
+    function setRevertOnTransfer(bool value) external {
+        revertOnTransfer = value;
+    }
+
+    function mint(address to, uint256 amount) external {
+        balanceOf[to] += amount;
+    }
+
+    function approve(address spender, uint256 amount) external returns (bool) {
+        allowance[msg.sender][spender] = amount;
+        return true;
+    }
+
+    function transfer(address to, uint256 amount) external returns (bool) {
+        if (revertOnTransfer) revert TransferDisabled();
+        balanceOf[msg.sender] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
+
+    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+        allowance[from][msg.sender] -= amount;
+        balanceOf[from] -= amount;
+        balanceOf[to] += amount;
+        return true;
+    }
 }
