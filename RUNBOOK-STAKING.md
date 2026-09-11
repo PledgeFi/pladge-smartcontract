@@ -221,29 +221,34 @@ Dengan kecepatan sekarang, 6.111,11 PLG per hari:
 | 90 hari | 550.000 |
 | 180 hari | 1.100.000 |
 
-**Tidak perlu memindahkan PLG ke dompet owner dulu.** `fundRewards` sengaja tidak
-dibatasi pemilik — tidak ada `onlyOwner` di situ — jadi dompet mana pun yang memegang
-PLG bisa mengisi kantong hadiah langsung. Memindahkannya dulu hanya menambah satu
-transaksi dan satu peluang salah kirim.
+`fundRewards` sengaja tidak dibatasi pemilik — tidak ada `onlyOwner` di situ — jadi
+dompet mana pun yang memegang PLG bisa mengisi kantong hadiah langsung, tanpa harus
+lewat dompet owner.
 
-Dompet yang disiapkan untuk ini: `0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055`.
-Per 12 September 2026 dompet itu masih kosong, dan **juga belum punya native token
-untuk bayar gas**. Keduanya harus ada sebelum perintah di bawah bisa jalan.
+**Jalur yang dipilih: kirim PLG langsung ke dompet owner `0x82FBf398…`.** Bukan karena
+kontraknya mengharuskan, tapi karena dompet itu sudah memegang native untuk bayar gas.
+Dompet yang punya PLG tapi nol gas tidak bisa mengirim transaksi apa pun — termasuk
+memindahkan PLG-nya sendiri keluar. Itu bukan teori: pada 12 September 2026,
+`0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055` menerima 1.017 PLG dengan saldo native
+nol, dan PLG itu tidak bisa digerakkan sampai dompetnya diberi gas.
 
-Yang tetap wajib dari dompet owner hanyalah membuka saklar pool di Langkah 4b.
+Jadi kalau memakai dompet selain owner, **isi gasnya dulu, baru kirim PLG-nya.**
 
 ```bash
 PLG=0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf
 AMOUNT=550000000000000000000000   # 550.000 PLG
-FUNDER_KEY=...                    # dompet yang memegang PLG, bukan harus owner
 
-cast send $PLG "approve(address,uint256)" $NEW $AMOUNT --rpc-url $RPC --private-key $FUNDER_KEY
-cast send $NEW "fundRewards(uint256,uint256)" 2 $AMOUNT --rpc-url $RPC --private-key $FUNDER_KEY
+cast send $PLG "approve(address,uint256)" $NEW $AMOUNT --rpc-url $RPC --private-key $OWNER_KEY
+cast send $NEW "fundRewards(uint256,uint256)" 2 $AMOUNT --rpc-url $RPC --private-key $OWNER_KEY
 ```
 
-Cara paling mudah lewat admin dashboard: sambungkan dompet pemegang PLG itu — bukan
-dompet owner — lalu buka `/staking` dan pakai kartu "Fund rewards". Approve-nya
-otomatis. Kartu itu memang tidak dikunci ke owner, jadi dompet mana pun bisa memakainya.
+Cara paling mudah lewat admin dashboard: sambungkan dompet yang memegang PLG, buka
+`/staking`, lalu pakai kartu "Fund rewards". Approve-nya otomatis. Kartu itu tidak
+dikunci ke owner, jadi dompet mana pun bisa memakainya.
+
+Kalau saldo PLG yang tersedia lebih kecil dari tabel di atas, jangan dipaksakan: dengan
+kecepatan 6.111,11 PLG per hari, 1.000 PLG habis dalam 4 jam. Pilih antara menambah
+PLG-nya atau menurunkan `setRewardRate` supaya anggarannya bertahan sesuai rencana.
 
 Verifikasi — angka terakhir harus sama dengan jumlah yang diisi:
 
