@@ -30,8 +30,9 @@ Pool 2 kecepatan hadiahnya 6.111,11 PLG per hari, kunci 1–90 hari.
 
 **Kenapa masih ada tulisan "PONS" di tabel ini?** Dulu repo menyebut token
 `0x1BE30101…` dengan nama "PONS". Seluruh repo sudah diganti jadi `PLG`, sesuai
-`symbol()` token itu sendiri. Tapi nama pool 2 di dalam kontrak masih `"PONS Staking"`,
-dan itu hanya bisa diubah lewat transaksi — lihat Langkah 2.
+`symbol()` token itu sendiri. Yang tersisa cuma satu: nama pool 2 di dalam kontrak.
+Tabel ini mencatat apa yang benar-benar ada di chain hari ini, bukan yang kita
+inginkan. Jalankan Langkah 2 dan tulisan PONS hilang untuk selamanya.
 
 Hati-hati satu hal: PLG lama `0xDfC0a301…` juga memakai simbol `PLG`. Jadi keduanya
 tidak bisa dibedakan dari simbolnya. Selalu cocokkan dengan alamat.
@@ -80,20 +81,40 @@ Verifikasi — kolom kesembilan harus `false`:
 cast call $OLD "pools(uint256)(address,address,uint256,uint256,uint256,uint256,uint256,uint256,bool,uint256)" 0 --rpc-url $RPC
 ```
 
-### Langkah 2 — Rapikan nama pool
+### Langkah 2 — Hapus nama "PONS", jadikan "PLG Staking"
 
-Nama `"PONS Staking"` tampil apa adanya di website, karena website membaca nama dari
-kontrak. Tapi hati-hati: pool 0 **sudah** memakai nama `"PLG Staking"` padahal isinya
-token lama. Ganti nama pool 0 dulu supaya tidak ada dua pool bernama sama.
+Nama pool tersimpan di dalam kontrak dan website menampilkannya apa adanya. Jadi
+selama transaksi ini belum jalan, pengguna tetap melihat tulisan "PONS Staking",
+sebersih apa pun kode kita.
+
+Urutannya penting: pool 0 **sudah** memakai nama `"PLG Staking"` padahal isinya token
+lama. Kalau pool 2 diganti duluan, akan ada dua pool bernama sama dan pengguna tidak
+bisa membedakannya. Skrip di bawah sudah mengurutkannya dengan benar dan menolak jalan
+kalau ada yang tidak sesuai.
+
+```bash
+export DEPLOYER_PRIVATE_KEY=...   # dompet pemilik 0x82FBf398…
+RPC=https://rpc.mainnet.chain.robinhood.com
+
+# 1. Uji dulu tanpa mengirim apa pun — wajib
+forge script script/mainnet/13_RenameStakingPools.s.sol --rpc-url $RPC
+
+# 2. Kalau lognya benar, baru kirim
+forge script script/mainnet/13_RenameStakingPools.s.sol --rpc-url $RPC --broadcast
+```
+
+Perintah pertama tidak mengirim transaksi, hanya mensimulasikan. Baca lognya: harus
+tertulis nama sebelum dan sesudah. Kalau ada yang janggal, jangan lanjut.
+
+Bisa juga lewat admin dashboard kalau lebih nyaman: tekan "Show retired" untuk melihat
+pool 0, ganti namanya jadi `PLG Staking (retired)`, baru ganti pool 2 jadi `PLG Staking`.
+
+Sesudah ini, cek hasilnya:
 
 ```bash
 NEW=0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
-cast send $NEW "setPoolName(uint256,string)" 0 "PLG Staking (retired)" --rpc-url $RPC --private-key $OWNER_KEY
-cast send $NEW "setPoolName(uint256,string)" 2 "PLG Staking" --rpc-url $RPC --private-key $OWNER_KEY
+cast call $NEW "poolNames(uint256)(string)" 2 --rpc-url $RPC   # harus "PLG Staking"
 ```
-
-Bisa juga lewat admin dashboard: tekan "Show retired" untuk melihat pool 0, pilih,
-lalu isi kolom "Display name" dan tekan "Rename".
 
 ### Langkah 3 — Tentukan rentang kunci
 
