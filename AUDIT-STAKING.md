@@ -10,7 +10,8 @@ Report only. No Solidity was changed and no on-chain action was taken as part of
 | Compiler | `v0.8.24+commit.e11b9ed9`, optimizer on, 200 runs, EVM `cancun` |
 | Chain | Robinhood Mainnet, chainId 4663 |
 | Proxy | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` (`PledgeFinanceStaking`) |
-| Implementation | `0x4de94A31e0725270b047820293e784bb62363Be3` |
+| Implementation | `0x4de94A31e0725270b047820293e784bb62363Be3` (read from the ERC-1967 slot, matches the docs) |
+| On-chain state read | 2026-09-12, via `rpc.mainnet.chain.robinhood.com` |
 
 Files reviewed:
 
@@ -18,10 +19,12 @@ Files reviewed:
 - [src/upgrade/PledgeUupsOwnable.sol](src/upgrade/PledgeUupsOwnable.sol) — ownership and `_authorizeUpgrade`
 - [src/upgrade/PledgeFinanceProxies.sol](src/upgrade/PledgeFinanceProxies.sol) — the `PledgeFinanceStaking` proxy
 - [script/mainnet/10_DeployStaking.s.sol](script/mainnet/10_DeployStaking.s.sol) — deployment parameters
-- [deployments/4663.json](deployments/4663.json) and [address-smartcontract](address-smartcontract) — live state
+- [deployments/4663.json](deployments/4663.json) and [address-smartcontract](address-smartcontract) — documented state, **now stale**, see section 2.1
 - [test/PledgeStaking.t.sol](test/PledgeStaking.t.sol) — coverage assessment
 
-Out of scope: the vault, oracle, surplus buffer, stability pool, the PONS token itself, and the Robinhood chain's own consensus or RPC behavior.
+Live pool configuration, ownership, token metadata, and balances were read directly from the chain rather than taken from the repo's documentation. Where the two disagree, this report follows the chain.
+
+Out of scope: the vault, oracle, surplus buffer, stability pool, the PLG token itself, and the Robinhood chain's own consensus or RPC behavior.
 
 ## 2. Executive summary
 
@@ -29,14 +32,48 @@ Out of scope: the vault, oracle, surplus buffer, stability pool, the PONS token 
 
 **The reward accounting is sound.** I could not find a way for one user to take another user's principal or rewards. Reentrancy is closed off by a single shared guard across every state-changing entry point, the implementation cannot be hijacked because its initializers are disabled at construction, `withdrawRewards` provably cannot reach staked principal, and emissions stop by themselves when the reserve is exhausted rather than reverting on `claim`.
 
-**The risk is concentrated in owner powers and in the current live state, not in the math.** Three things stand out. The two live pools are seeded with the deprecated launchpad PLG token rather than PONS, so anyone staking today locks a dead token for up to 90 days and is paid in a dead token. The owner is still the deployer EOA, which holds the UUPS upgrade key and could replace the implementation and take everything. And there is no emergency exit: withdrawing principal is coupled to a successful reward-token transfer, so a single misbehaving reward token bricks principal permanently.
+**The risk is concentrated in owner powers and in the current live state, not in the math.** Three things stand out. The only active pool accepts stakes with an empty reward reserve, so anyone staking today is locked for up to 90 days and earns exactly zero. The owner is still the deployer EOA, which holds the UUPS upgrade key and could replace the implementation and take everything. And there is no emergency exit: withdrawing principal is coupled to a successful reward-token transfer, so a single misbehaving reward token bricks principal permanently.
 
 | Severity | Count |
 |---|---|
 | Critical | 1 |
 | High | 3 |
 | Medium | 5 |
-| Low / Informational | 6 |
+| Low / Informational | 7 |
+
+## 2.1 Live on-chain state
+
+Read from the chain on 2026-09-12. This supersedes [deployments/4663.json](deployments/4663.json), which still describes an earlier two-pool configuration.
+
+There are **three** pools, not two. The token rotation that the repo documentation lists as pending has in fact been carried out: pools 0 and 1 were emptied and deactivated, and pool 2 was created against the correct token.
+
+| | Pool 0 | Pool 1 | Pool 2 |
+|---|---|---|---|
+| Name | `PLG Staking` | `USDG Staking` | `PONS Staking` |
+| Stake token | old PLG `0xDfC0a301…` | USDG `0x5fc5360D…` | **PLG `0x1BE30101…`** |
+| Reward token | old PLG `0xDfC0a301…` | old PLG `0xDfC0a301…` | **PLG `0x1BE30101…`** |
+| `rewardRatePerSecond` | 70730452674897119 | 0 | 70730452674897119 |
+| `totalStaked` | 0 | 0 | 0 |
+| `rewardReserve` | 0 | 0 | **0** |
+| Lock range | 1 to 90 days | 0 | 1 to 90 days |
+| `active` | false | false | **true** |
+
+All three pools show `lastUpdateTime` 1789155480, that is 2026-09-11 19:38 UTC, so the reconfiguration happened in a single session the day before this read.
+
+Supporting facts:
+
+- The staking contract holds **0** of both the new and the old PLG. The 550,000 old-PLG reserve was recovered; the deployer holds 54,450,000 old PLG.
+- The deployer holds **0** new PLG and has granted the staking contract **0** allowance, so `fundRewards` cannot currently be called by them.
+- Pool 2's rate of `70730452674897119` is exactly `550000e18 / 90 days`, so it is configured for the intended 550k, 90-day program. Only the funding is missing.
+- Token `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` reports name `Pledge Finance`, symbol `PLG`, 18 decimals, total supply 1e27. Note that the repo calls this token "PONS" throughout, which is why pool 2 is named `PONS Staking`; on-chain its symbol is `PLG`.
+- Owner is still `0x82FBf39835a885C1CdA3D756FB6AA79802f29e92`, the deployer EOA.
+
+Two simulated calls confirm the behavior:
+
+- `stake(2, 1e18)` reverts with `ERC20InsufficientAllowance(0xEe8c…bF07, 0, 1e18)`. The revert comes from the token, not the pool, which means **pool 2 itself accepts stakes** — only an `approve` is missing.
+- `stake(0, 1e18)` reverts with `PoolInactive()` (`0x0f509b11`), confirming pool 0 is closed to new deposits.
+
+Because `totalStaked` is 0 everywhere, **no user funds are currently at risk and nobody is locked in any pool.**
 
 ## 3. Function inventory
 
@@ -122,45 +159,34 @@ The invariant assumes that every `transfer` and `transferFrom` moves exactly the
 
 ## 5. Findings
 
-### C-1 — Live pools are seeded with a deprecated token, and the USDG pool pays nothing
+### C-1 — Pool 2 is open for deposits with an empty reward reserve
 
-[deployments/4663.json](deployments/4663.json) records the live configuration of proxy `0xEe8c…bF07`:
+Pool 2 is the only active pool. It is correctly configured against PLG `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` for both stake and reward, with a 1-to-90-day lock range and a rate of `70730452674897119` per second, which is exactly the intended `550000e18 / 90 days`. Every parameter is right except the one that matters most: `rewardReserve` is **0**, and the contract holds no PLG at all.
 
-```json
-"0": {
-  "name": "PLG Staking",
-  "stakeToken": "old launchpad PLG 0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
-  "rewardToken": "old launchpad PLG",
-  "minLock": "1 day", "lock": "90 days",
-  "rewardReserve": "550000e18"
-},
-"1": {
-  "name": "USDG Staking",
-  "stakeToken": "USDG", "rewardToken": "old launchpad PLG",
-  "minLock": "0", "lock": "0", "rewardReserve": "0"
-}
-```
+Emission is gated on the reserve:
 
-The same file lists `0xDfC0a301…` under `deprecated` as `old_launchpad_PLG`, and [address-smartcontract](address-smartcontract) marks it "Abandoned earlier". The `staking` block acknowledges the gap directly: *"live pools 0/1 were seeded with the old launchpad PLG and have not been rotated yet"*.
-
-The deployment script it was supposed to match uses PONS throughout:
-
-[script/mainnet/10_DeployStaking.s.sol:37-40](script/mainnet/10_DeployStaking.s.sol)
+[src/core/PledgeStaking.sol:337-345](src/core/PledgeStaking.sol)
 
 ```solidity
-        uint256 ponsPool = staking.addPool(PONS, PONS, rewardRate, 1 days, 90 days, true);
-        staking.setPoolName(ponsPool, "PONS Staking");
-
-        uint256 usdgPool = staking.addPool(USDG, PONS, 0, 0, true);
+    function _pendingEmission(PoolInfo memory pool) internal view returns (uint256 reward) {
+        if (!pool.active || pool.totalStaked == 0 || pool.rewardRatePerSecond == 0 || pool.rewardReserve == 0) {
+            return 0;
+        }
 ```
 
-**Impact.** Anyone who stakes into pool 0 today deposits an abandoned token, is locked for up to 90 days, and is paid rewards in that same abandoned token. Pool 0 is `active`, so nothing at the contract level stops this. Pool 1 is worse in a different way: `rewardRatePerSecond` is 0 and `rewardReserve` is 0, so `_pendingEmission` returns 0 on every call and USDG stakers accrue exactly nothing while their USDG sits in the contract. Because pool 1 has `lock = 0` they can leave at any time, which limits the damage to opportunity cost, but the UI will still present it as a staking product.
+With `rewardReserve == 0` this returns 0 on every call, forever, regardless of the configured rate.
 
-**Recommendation.** Treat this as an operational incident rather than a code bug. Set both pools inactive so no new stake can enter, recover the 550k PLG reserve via `withdrawRewards`, and create fresh pools against PONS `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf`. Note that `setPoolActive(false)` does not evict existing stakers and does not shorten their locks — anyone already in pool 0 stays locked on the deprecated token until their `lockedUntil` passes. Until the rotation is done, the staking product should not be linked from any user-facing surface.
+**Impact.** The pool accepts deposits right now — the simulated `stake(2, 1e18)` in section 2.1 fails only on a missing ERC-20 allowance, not on any pool-level check. A user who approves and stakes today has their PLG locked for between 1 and 90 days depending on the duration they pick, and accrues exactly zero rewards for the entire period. `pendingReward` returns 0, `claim` succeeds and transfers nothing, and `unstake` reverts with `LockActive` until the lock expires. Nothing in the contract or in its view functions signals that the pool is unfunded — `pools(2)` exposes `rewardReserve`, but a frontend that only reads the rate will display a healthy APR that does not exist.
+
+This is the live version of the problem; the earlier deprecated-token issue has already been remediated (see below).
+
+**Recommendation.** Either fund the pool or close it, and do it in that order of preference. Funding requires moving 550,000 PLG to the deployer, calling `approve(0xEe8c…bF07, 550000e18)` on the token, then `fundRewards(2, 550000e18)`. Note that `fundRewards` is permissionless, so any address holding the PLG can do this — it does not have to be the owner. If funding is not imminent, call `setPoolActive(2, false)` first so that nobody can deposit into a pool that pays nothing; this is safe today because `totalStaked` is 0, so no existing position is affected.
+
+**Remediated — original finding.** As first written, this finding covered pools 0 and 1 being seeded with the deprecated launchpad PLG `0xDfC0a301…` and a 550k reserve denominated in that dead token. The chain read in section 2.1 shows this was fixed on 2026-09-11: both pools are now `active = false` with `rewardReserve` 0 and `totalStaked` 0, the 550k old PLG was recovered to the deployer, and pool 2 was created against the correct token. No user was caught in the deprecated pools. What remains is a documentation gap — [deployments/4663.json](deployments/4663.json) still describes the old two-pool layout and still says the pools "have not been rotated yet" (see L-7).
 
 ### H-1 — Owner is still the deployer EOA and holds the UUPS upgrade key
 
-[deployments/4663.json](deployments/4663.json) states the owner is `0x82FBf39835a885C1CdA3D756FB6AA79802f29e92`, type `deployer EOA`, with handover to the 48-hour timelock `0x1195e53E…` listed as `pending`. [address-smartcontract](address-smartcontract) repeats this under "Governance (handover still pending)". The script that would perform the handover, [11_TransferOwnershipToTimelock.s.sol](script/mainnet/11_TransferOwnershipToTimelock.s.sol), has not been run.
+Confirmed on-chain: `owner()` on the proxy returns `0x82FBf39835a885C1CdA3D756FB6AA79802f29e92`, the deployer EOA, not the 48-hour timelock `0x1195e53E…`. [deployments/4663.json](deployments/4663.json) and [address-smartcontract](address-smartcontract) both list the handover as pending, and the script that would perform it, [11_TransferOwnershipToTimelock.s.sol](script/mainnet/11_TransferOwnershipToTimelock.s.sol), has not been run. Unlike C-1, this one has not been quietly fixed since the docs were written.
 
 Upgrade authorization is a bare owner check:
 
@@ -402,7 +428,7 @@ The parameter is `memory`, so passing the storage pointer from `_updatePool` lin
 
 Three stale claims, all of which would mislead someone reasoning about the live system:
 
-[product.md](product.md) line 255 marks `PledgeStaking.sol` as "testnet only (OUT of mainnet scope)" and line 283 puts staking in the "Out" row of the risk table with "Testnet-only, never going to 4663". The contract is deployed on 4663 and holds a 550k reward reserve.
+[product.md](product.md) line 255 marks `PledgeStaking.sol` as "testnet only (OUT of mainnet scope)" and line 283 puts staking in the "Out" row of the risk table with "Testnet-only, never going to 4663". The contract is deployed on 4663, has an active pool, and was reconfigured as recently as 2026-09-11.
 
 [product.md](product.md) line 608 states that "`fundRewards` is public with no accounting, so rewards can be underfunded and `claim` will revert". The `rewardReserve` mechanism introduced in commit `218548a` makes this false — emissions are capped at the reserve, so `claim` returns zero rather than reverting. `test_emissionsStopWhenReserveRunsOut` demonstrates the corrected behavior.
 
@@ -415,6 +441,12 @@ The same outdated claim survives in the deployment script header:
 ///      zero rate until a rate is set. `fundRewards` moves the whole reward reserve up front
 ///      because the contract has no accounting that would stop `claim` reverting if underfunded.
 ```
+
+### L-7 — `deployments/4663.json` no longer matches the chain
+
+The `staking` block in [deployments/4663.json](deployments/4663.json) describes two pools seeded with the old launchpad PLG and states *"live pools 0/1 were seeded with the old launchpad PLG and have not been rotated yet"*. Section 2.1 shows there are three pools, that 0 and 1 were emptied and deactivated, and that pool 2 runs on the correct token. The recorded `rewardReserve` of `550000e18` for pool 0 is now 0.
+
+This file is the reference an operator or integrator reaches for first. In its current state it would lead someone to integrate against a dead pool, or to conclude that a remediation still needs doing when it has already been done. The token naming adds to the confusion: the repo calls `0x1BE30101…` "PONS" everywhere, but the token's own `symbol()` is `PLG`, and pool 2 carries the on-chain name `PONS Staking` while staking a token called `PLG`.
 
 ## 6. Test coverage
 
@@ -442,7 +474,7 @@ Recording these so a future reviewer does not have to re-derive them:
 - **No cross-pool drain.** Reserves are per-pool even when several pools share a reward token, as live pools 0 and 1 do. Every `withdrawRewards` is bounded by its own pool's reserve.
 - **No retroactive emission to an empty pool.** `_pendingEmission` returns 0 while `totalStaked == 0`, but `_updatePool` still advances `lastUpdateTime`, so the idle period is skipped rather than paid out in a lump to the first staker who arrives.
 - **`setPoolActive` settles in the correct order.** Deactivating accrues up to the current timestamp before the flag flips; reactivating advances `lastUpdateTime` without accruing, so a pause neither loses nor duplicates emissions.
-- **Just-in-time staking is not profitable.** Emission is strictly proportional to time held, and within a single block `elapsed == 0` yields nothing, so a flash-loaned deposit and withdrawal in one transaction earns zero. This matters because live pool 1 has no lock at all.
+- **Just-in-time staking is not profitable.** Emission is strictly proportional to time held, and within a single block `elapsed == 0` yields nothing, so a flash-loaned deposit and withdrawal in one transaction earns zero. This mattered for pool 1, which had no lock at all.
 - **No unbounded loops.** There is no `massUpdatePools`; every function touches exactly one pool, so adding pools never creates a gas-limit DoS.
 - **No ETH handling.** There is no `receive` or `payable` function, so ETH sent to the proxy reverts rather than becoming stuck.
 
@@ -450,18 +482,19 @@ Recording these so a future reviewer does not have to re-derive them:
 
 **Operational — no code change required.**
 
-1. Set live pools 0 and 1 inactive and stop linking staking from any user-facing surface until the token rotation is complete (C-1).
-2. Recover the 550k launchpad PLG reserve with `withdrawRewards`, then create replacement pools against PONS `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` (C-1). Existing pool 0 stakers stay locked on the deprecated token until their `lockedUntil` passes; plan a direct remedy for them.
+1. Close the window on pool 2. Either fund it — move 550,000 PLG to a funding address, `approve(0xEe8c…bF07, 550000e18)`, then `fundRewards(2, 550000e18)` — or call `setPoolActive(2, false)` until the PLG is available. Doing neither leaves an open pool that locks deposits for up to 90 days and pays nothing (C-1). This is safe to do now because `totalStaked` is 0.
+2. Do not link staking from any user-facing surface until pool 2 shows a non-zero `rewardReserve`, and have the frontend read `rewardReserve` rather than `rewardRatePerSecond` when deciding whether to display a pool at all (C-1).
 3. Execute the ownership handover to timelock `0x1195e53E…` with the 3-of-4 Safe as proposer, simulating the transaction first and verifying the address byte for byte (H-1).
 4. Document the owner's ability to withdraw the unaccrued reward budget wherever staking is presented to users (H-2).
 5. Change the frontend to always call `stake(uint256,uint256,uint256)` with an explicit duration, and show the resulting unlock date for the whole position before signing (M-2).
 6. Extend the upgrade rules in [deployments/4663.json](deployments/4663.json) to state that `PoolInfo` is frozen and that `PledgeStaking`'s inheritance list must not change (M-4, M-5).
-7. Correct the stale claims in [product.md](product.md) lines 255, 283, 608 and in the header of [10_DeployStaking.s.sol](script/mainnet/10_DeployStaking.s.sol) (L-6).
+7. Bring [deployments/4663.json](deployments/4663.json) back in sync with the chain: three pools, 0 and 1 retired, pool 2 on `0x1BE30101…` (L-7). Settle on one name for that token, since the repo says "PONS" and the token says `PLG`.
+8. Correct the stale claims in [product.md](product.md) lines 255, 283, 608 and in the header of [10_DeployStaking.s.sol](script/mainnet/10_DeployStaking.s.sol) (L-6).
 
 **Code changes for a future `PledgeStaking` v1.1, should one be built.**
 
-8. Add `emergencyWithdraw(uint256 poolId)` returning principal without touching the reward token (H-3).
-9. Credit measured balance deltas in `_stake` and `fundRewards`, or codify a hard rule restricting `addPool` to standard ERC-20s (M-1).
-10. Decide whether lock duration should carry a reward weight or be removed (M-3).
-11. Bound `setRewardRate` (L-3); remove `EPOCH_DURATION` and `nextEpochEnds()` (L-2); change `_pendingEmission` to take a storage pointer (L-5).
-12. Add an invariant test for the section 4 balance property, an upgrade storage-layout test, and tests for non-standard tokens and 6-decimal stake tokens (section 6).
+9. Add `emergencyWithdraw(uint256 poolId)` returning principal without touching the reward token (H-3).
+10. Credit measured balance deltas in `_stake` and `fundRewards`, or codify a hard rule restricting `addPool` to standard ERC-20s (M-1).
+11. Decide whether lock duration should carry a reward weight or be removed (M-3).
+12. Bound `setRewardRate` (L-3); remove `EPOCH_DURATION` and `nextEpochEnds()` (L-2); change `_pendingEmission` to take a storage pointer (L-5).
+13. Add an invariant test for the section 4 balance property, an upgrade storage-layout test, and tests for non-standard tokens and 6-decimal stake tokens (section 6).
