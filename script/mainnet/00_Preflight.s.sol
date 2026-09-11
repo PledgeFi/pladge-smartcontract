@@ -24,7 +24,7 @@ contract PreflightMainnet is MainnetBase {
         console2.log("block         ", block.number);
         console2.log("ETH (wei)     ", deployer.balance);
         console2.log("USDG (6dp)    ", IERC20(USDG).balanceOf(deployer));
-        console2.log("PONS (18dp)   ", IERC20(PONS).balanceOf(deployer));
+        console2.log("PLG  (18dp)   ", IERC20(PLG).balanceOf(deployer));
         console2.log("NVDA (18dp)   ", IERC20(NVDA).balanceOf(deployer));
         console2.log("SPY  (18dp)   ", IERC20(SPY).balanceOf(deployer));
 

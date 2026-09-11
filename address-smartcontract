@@ -50,7 +50,9 @@ Deployer EOA (current owner)         0x82FBf39835a885C1CdA3D756FB6AA79802f29e92
 
 ## Tokens
 
-PONS (18 decimals)                    0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf
+# Live protocol token. The abandoned launchpad token below reports the same PLG symbol,
+# so integrations must match on address, never on symbol.
+PLG (18 decimals)                    0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf
 PaxosUSDG (6 decimals)               0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168
 RobinhoodNVDA                        0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC
 RobinhoodSPY                         0x117cc2133c37B721F49dE2A7a74833232B3B4C0C
