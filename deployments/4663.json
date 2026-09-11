@@ -62,11 +62,12 @@
   "staking": {
     "proxy": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
     "implementation": "0x4de94A31e0725270b047820293e784bb62363Be3",
+    "onlyLivePool": "Pool 2. It stakes and rewards PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf. Pools 0 and 1 are retired and can never be deleted or re-pointed: `_pools` is append-only and a pool's tokens are fixed at addPool with no setter. Both are inactive and hidden by the frontend.",
     "rewardToken": "PLG 0x1BE30101 going forward; pools 0/1 were seeded with the old launchpad PLG 0xDfC0a301 and are retired",
     "canonicalToken": "0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
     "pools": {
       "0": {
-        "name": "PLG Staking",
+        "name": "PLG Staking (retired)",
         "status": "retired",
         "stakeToken": "old launchpad PLG 0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
         "rewardToken": "old launchpad PLG",
@@ -74,16 +75,17 @@
         "lock": "90 days",
         "rewardReserve": "0",
         "rewardRatePerSecond": "70730452674897119",
-        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted, so this stays visible forever. Its name collides with pool 2, so script/mainnet/13_RenameStakingPools.s.sol renames it to 'PLG Staking (retired)' first."
+        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted and a pool's tokens have no setter, so this stays on the abandoned launchpad token forever. Its name collides with pool 2, so script/mainnet/13_RenameStakingPools.s.sol renames it to 'PLG Staking (retired)' first."
       },
       "1": {
-        "name": "USDG Staking",
+        "name": "USDG Staking (retired)",
         "status": "retired",
-        "stakeToken": "USDG",
-        "rewardToken": "old launchpad PLG",
+        "stakeToken": "USDG 0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
+        "rewardToken": "old launchpad PLG 0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
         "minLock": "0",
         "lock": "0",
-        "rewardReserve": "0"
+        "rewardReserve": "0",
+        "nameNotYetAppliedOnChain": "Storage still reads 'USDG Staking' until script/mainnet/13_RenameStakingPools.s.sol runs."
       },
       "2": {
         "name": "PLG Staking",

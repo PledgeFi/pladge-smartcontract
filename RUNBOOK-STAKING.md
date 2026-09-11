@@ -20,32 +20,47 @@ Tanggal pemeriksaan chain: 12 September 2026.
 
 Kontrak staking yang benar punya 3 pool:
 
-| # | Nama sekarang | Token stake | Status | Catatan |
+| # | Nama di chain sekarang | Token stake | Status | Rencana |
 | --- | --- | --- | --- | --- |
-| 0 | `PLG Staking` | PLG **lama** `0xDfC0a301…` | mati | namanya menyesatkan |
-| 1 | `USDG Staking` | USDG | mati | tidak dipakai |
-| 2 | `PONS Staking` | PLG **baru** `0x1BE30101…` | aktif | ini yang benar, tapi saldo hadiah nol |
+| 0 | `PLG Staking` | PLG **lama** `0xDfC0a301…` | mati | ganti nama jadi `PLG Staking (retired)` |
+| 1 | `USDG Staking` | USDG `0x5fc5360D…` | mati | ganti nama jadi `USDG Staking (retired)` |
+| 2 | `PONS Staking` | **PLG `0x1BE30101…`** | aktif | ganti nama jadi `PLG Staking` — ini satu-satunya pool yang dipakai |
 
-Pool 2 kecepatan hadiahnya 6.111,11 PLG per hari, kunci 1–90 hari.
+Pool 2 kecepatan hadiahnya 6.111,11 PLG per hari, kunci 1–90 hari. Token yang
+di-stake dan token hadiahnya sama-sama `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf`.
 
-**Kenapa masih ada tulisan "PONS" di tabel ini?** Dulu repo menyebut token
-`0x1BE30101…` dengan nama "PONS". Seluruh repo sudah diganti jadi `PLG`, sesuai
-`symbol()` token itu sendiri. Yang tersisa cuma satu: nama pool 2 di dalam kontrak.
-Tabel ini mencatat apa yang benar-benar ada di chain hari ini, bukan yang kita
-inginkan. Jalankan Langkah 2 dan tulisan PONS hilang untuk selamanya.
+Kolom "Nama di chain sekarang" mencatat apa yang benar-benar ada di blockchain hari
+ini, bukan yang kita inginkan. Jalankan Langkah 2 dan kolom itu berubah.
 
-Hati-hati satu hal: PLG lama `0xDfC0a301…` juga memakai simbol `PLG`. Jadi keduanya
-tidak bisa dibedakan dari simbolnya. Selalu cocokkan dengan alamat.
+### Yang TIDAK bisa dilakukan
 
-**Pool tidak bisa dihapus.** Daftar pool di kontrak hanya bisa ditambah, dan token
-sebuah pool tidak bisa diganti. Jadi pool 0 dan 1 akan selamanya ada di sana. Yang
-bisa dilakukan hanya membiarkannya mati — dan itu sudah.
+**Pool 0 dan 1 tidak bisa dihapus, dan tokennya tidak bisa diganti ke PLG baru.**
 
-Website dan admin dashboard sekarang menyembunyikan pool yang mati, jadi user hanya
-melihat satu pool PLG. Di admin masih ada tombol "Show retired" kalau perlu melihatnya.
+Ini batasan kontrak, bukan pilihan kita. Daftar pool di dalam kontrak hanya bisa
+ditambah — tidak ada fungsi untuk menghapus. Dan token sebuah pool ditetapkan sekali
+saat pool dibuat, tidak ada fungsi untuk menggantinya. Jadi pool 0 akan selamanya
+berisi PLG lama, dan pool 1 akan selamanya berisi USDG.
 
-**Jebakan yang perlu diperhatikan:** token PLG lama `0xDfC0a301…` simbolnya juga
-`PLG`. Jadi membedakan lewat nama token tidak cukup — harus lihat alamatnya.
+Yang bisa dilakukan ada tiga, dan ketiganya sudah atau akan dikerjakan:
+
+1. Dimatikan supaya tidak ada yang bisa masuk — **sudah**, keduanya `active = false`.
+2. Diberi nama yang jelas supaya tidak tertukar — Langkah 2.
+3. Disembunyikan dari website — **sudah**, website dan admin dashboard hanya
+   menampilkan pool yang hidup. Di admin ada tombol "Show retired" kalau perlu.
+
+Hasil akhirnya: pengguna hanya melihat satu pool, yaitu pool 2 dengan PLG
+`0x1BE30101…`. Pool 0 dan 1 tetap ada di blockchain, tapi tidak terlihat dan tidak
+bisa dimasuki.
+
+### Jebakan dua token bernama sama
+
+PLG lama `0xDfC0a301…` **juga** memakai simbol `PLG`. Jadi kalau Anda membedakan lewat
+nama atau simbol token, keduanya terlihat identik. Selalu cocokkan alamatnya.
+
+| Token | Alamat | Dipakai? |
+| --- | --- | --- |
+| PLG live | `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` | **ya, ini satu-satunya** |
+| PLG lama (launchpad) | `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38` | tidak, jangan disentuh |
 
 Di kontrak staking lama, pool 0 dan 1 masih berstatus aktif. Tidak ada dana orang di
 dalamnya (total stake nol), tapi selama masih aktif orang bisa masuk ke sana.
@@ -87,10 +102,20 @@ Nama pool tersimpan di dalam kontrak dan website menampilkannya apa adanya. Jadi
 selama transaksi ini belum jalan, pengguna tetap melihat tulisan "PONS Staking",
 sebersih apa pun kode kita.
 
+Skrip di bawah mengganti nama ketiga pool sekaligus:
+
+| # | Dari | Jadi |
+| --- | --- | --- |
+| 0 | `PLG Staking` | `PLG Staking (retired)` |
+| 1 | `USDG Staking` | `USDG Staking (retired)` |
+| 2 | `PONS Staking` | `PLG Staking` |
+
 Urutannya penting: pool 0 **sudah** memakai nama `"PLG Staking"` padahal isinya token
 lama. Kalau pool 2 diganti duluan, akan ada dua pool bernama sama dan pengguna tidak
-bisa membedakannya. Skrip di bawah sudah mengurutkannya dengan benar dan menolak jalan
-kalau ada yang tidak sesuai.
+bisa membedakannya. Skrip sudah mengurutkannya dengan benar. Sebelum mengirim apa pun
+dia juga memeriksa bahwa tiap pool berisi token yang diharapkan — dicocokkan lewat
+alamat — dan bahwa pool 0 dan 1 memang sudah mati, supaya label "retired" tidak bohong.
+Kalau ada satu saja yang tidak cocok, skripnya berhenti tanpa mengirim transaksi.
 
 ```bash
 export DEPLOYER_PRIVATE_KEY=...   # dompet pemilik 0x82FBf398…
@@ -107,14 +132,17 @@ Perintah pertama tidak mengirim transaksi, hanya mensimulasikan. Baca lognya: ha
 tertulis nama sebelum dan sesudah. Kalau ada yang janggal, jangan lanjut.
 
 Bisa juga lewat admin dashboard kalau lebih nyaman: tekan "Show retired" untuk melihat
-pool 0, ganti namanya jadi `PLG Staking (retired)`, baru ganti pool 2 jadi `PLG Staking`.
+pool 0 dan 1, ganti nama keduanya dulu, baru ganti pool 2 jadi `PLG Staking`.
 
 Sesudah ini, cek hasilnya:
 
 ```bash
 NEW=0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
-cast call $NEW "poolNames(uint256)(string)" 2 --rpc-url $RPC   # harus "PLG Staking"
+for i in 0 1 2; do cast call $NEW "poolNames(uint256)(string)" $i --rpc-url $RPC; done
 ```
+
+Harus keluar `PLG Staking (retired)`, `USDG Staking (retired)`, `PLG Staking`. Tidak
+boleh ada lagi tulisan PONS.
 
 ### Langkah 3 — Tentukan rentang kunci
 
