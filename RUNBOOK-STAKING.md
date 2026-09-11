@@ -221,17 +221,29 @@ Dengan kecepatan sekarang, 6.111,11 PLG per hari:
 | 90 hari | 550.000 |
 | 180 hari | 1.100.000 |
 
-Pindahkan dulu PLG ke wallet owner, lalu:
+**Tidak perlu memindahkan PLG ke dompet owner dulu.** `fundRewards` sengaja tidak
+dibatasi pemilik — tidak ada `onlyOwner` di situ — jadi dompet mana pun yang memegang
+PLG bisa mengisi kantong hadiah langsung. Memindahkannya dulu hanya menambah satu
+transaksi dan satu peluang salah kirim.
+
+Dompet yang disiapkan untuk ini: `0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055`.
+Per 12 September 2026 dompet itu masih kosong, dan **juga belum punya native token
+untuk bayar gas**. Keduanya harus ada sebelum perintah di bawah bisa jalan.
+
+Yang tetap wajib dari dompet owner hanyalah membuka saklar pool di Langkah 4b.
 
 ```bash
 PLG=0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf
 AMOUNT=550000000000000000000000   # 550.000 PLG
+FUNDER_KEY=...                    # dompet yang memegang PLG, bukan harus owner
 
-cast send $PLG "approve(address,uint256)" $NEW $AMOUNT --rpc-url $RPC --private-key $OWNER_KEY
-cast send $NEW "fundRewards(uint256,uint256)" 2 $AMOUNT --rpc-url $RPC --private-key $OWNER_KEY
+cast send $PLG "approve(address,uint256)" $NEW $AMOUNT --rpc-url $RPC --private-key $FUNDER_KEY
+cast send $NEW "fundRewards(uint256,uint256)" 2 $AMOUNT --rpc-url $RPC --private-key $FUNDER_KEY
 ```
 
-Bisa juga lewat admin dashboard, kartu "Fund rewards" — approve-nya otomatis.
+Cara paling mudah lewat admin dashboard: sambungkan dompet pemegang PLG itu — bukan
+dompet owner — lalu buka `/staking` dan pakai kartu "Fund rewards". Approve-nya
+otomatis. Kartu itu memang tidak dikunci ke owner, jadi dompet mana pun bisa memakainya.
 
 Verifikasi — angka terakhir harus sama dengan jumlah yang diisi:
 
@@ -241,6 +253,23 @@ cast call $NEW "pools(uint256)(address,address,uint256,uint256,uint256,uint256,u
 
 Setelah ini website akan menampilkan APR dan kolom "Rewards last" berisi 90 hari.
 Selama saldo hadiah masih nol, website menolak stake dan menampilkan peringatan.
+
+### Langkah 4b — Buka kembali pool 2
+
+Pool 2 ditutup pada 12 September 2026 dengan `setPoolActive(2, false)`, karena saat itu
+saldo hadiahnya nol. Membiarkannya terbuka berarti menjebak orang: uang mereka terkunci
+sampai 90 hari sementara bunganya nol, dan halaman staking menjanjikan bonus 3,00x yang
+tidak bisa ditepati.
+
+Jangan jalankan ini sebelum Langkah 4 selesai dan saldonya sudah terverifikasi.
+
+Ini satu-satunya langkah di alur pendanaan yang **wajib** dari dompet owner.
+
+```bash
+cast send $NEW "setPoolActive(uint256,bool)" 2 true --rpc-url $RPC --private-key $OWNER_KEY
+```
+
+Bisa juga lewat admin dashboard, tombol aktif/nonaktif di kartu edit pool.
 
 ### Langkah 5 — Upgrade implementasi untuk menambah `emergencyWithdraw`
 
