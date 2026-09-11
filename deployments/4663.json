@@ -79,7 +79,7 @@
         "lock": "90 days",
         "rewardReserve": "0",
         "rewardRatePerSecond": "70730452674897119",
-        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted and a pool's tokens have no setter, so this stays on the abandoned launchpad token forever. Its name collides with pool 2, so script/mainnet/13_RenameStakingPools.s.sol renames it to 'PLG Staking (retired)' first."
+        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted and a pool's tokens have no setter, so this stays on the abandoned launchpad token forever. Renamed on 2026-09-12 by script/mainnet/13_RenameStakingPools.s.sol; the old name collided with pool 2."
       },
       "1": {
         "name": "USDG Staking (retired)",
@@ -89,19 +89,19 @@
         "minLock": "0",
         "lock": "0",
         "rewardReserve": "0",
-        "nameNotYetAppliedOnChain": "Storage still reads 'USDG Staking' until script/mainnet/13_RenameStakingPools.s.sol runs."
+        "note": "Renamed on 2026-09-12 by script/mainnet/13_RenameStakingPools.s.sol."
       },
       "2": {
         "name": "PLG Staking",
-        "status": "active but unfunded",
+        "status": "inactive, awaiting reward funding",
         "stakeToken": "PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
         "rewardToken": "PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
         "minLock": "1 day",
         "lock": "90 days",
         "rewardReserve": "0",
         "rewardRatePerSecond": "70730452674897119",
-        "nameNotYetAppliedOnChain": "Storage still holds the old launch-era name. The frontend renders pool names verbatim, so users see the stale one until script/mainnet/13_RenameStakingPools.s.sol runs.",
-        "note": "The canonical pool. Reserve is 0, so it currently pays nothing: fund it with 550000e18 for a 90 day program before opening it."
+        "maxBoostBps": "30000",
+        "note": "The canonical pool. Renamed from 'PONS Staking' on 2026-09-12. Deactivated the same day with setPoolActive(2,false) because the reserve is 0: leaving it open would have let people stake into a pool that pays nothing. Fund it with 550000e18 for a 90 day program, then reopen it. The owner EOA holds 0 PLG as of 2026-09-12, so the supply has to be moved there first."
       }
     }
   },
