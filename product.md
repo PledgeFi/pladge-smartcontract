@@ -719,7 +719,7 @@ Each proxy is an empty subclass of `ERC1967Proxy` defined in [`src/upgrade/Pledg
 | `PledgeFinanceStabilityPool` | `0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D` | `0x3fc952F815f63dE054446D4c3C16c57d6467635D` |
 | `PledgeFinanceStaking` | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0x4de94A31e0725270b047820293e784bb62363Be3` |
 
-External, unchanged: USDG (Paxos) `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` at **6 decimals**, and the PONS-launched token `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` (18 decimals). The old launchpad PLG `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38` is unused.
+External, unchanged: USDG (Paxos) `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` at **6 decimals**, and PLG `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` (18 decimals). The old launchpad PLG `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38` is unused but reports the same `PLG` symbol, so match on address.
 
 Deprecated and abandoned — do not integrate, upgrade, or seed. The 2026-09-09a set was the first pass of this same redeploy, replaced hours later by the branded proxies above; its markets are set inactive and its 550k PLG reward reserve was recovered. Vault `0xb2C7aC90…`, oracle `0xE8D41275…`, surplus `0x0fe86A3D…`, pool `0x45EA5b2F…`, staking `0xA3178860…`. Older still: vault `0xf486…` (v0, ~10 USDG stuck), vault `0x0dfd39…` (v1), vault `0x1757…` (never canonical), oracle `0x1952…`, surplus `0xEa30…`, pool `0x8570…`, staking `0xBa0F4859…`.
 

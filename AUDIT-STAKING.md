@@ -65,7 +65,7 @@ Supporting facts:
 - The staking contract holds **0** of both the new and the old PLG. The 550,000 old-PLG reserve was recovered; the deployer holds 54,450,000 old PLG.
 - The deployer holds **0** new PLG and has granted the staking contract **0** allowance, so `fundRewards` cannot currently be called by them.
 - Pool 2's rate of `70730452674897119` is exactly `550000e18 / 90 days`, so it is configured for the intended 550k, 90-day program. Only the funding is missing.
-- Token `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` reports name `Pledge Finance`, symbol `PLG`, 18 decimals, total supply 1e27. Note that the repo calls this token "PONS" throughout, which is why pool 2 is named `PONS Staking`; on-chain its symbol is `PLG`.
+- Token `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` reports name `Pledge Finance`, symbol `PLG`, 18 decimals, total supply 1e27. The repo originally called this token "PONS", which is why pool 2 carries the on-chain name `PONS Staking`. The repo has since been renamed to `PLG` throughout to match the token's own `symbol()`; the on-chain pool name still needs a `setPoolName(2, "PLG Staking")` transaction.
 - Owner is still `0x82FBf39835a885C1CdA3D756FB6AA79802f29e92`, the deployer EOA.
 
 Two simulated calls confirm the behavior:
@@ -298,7 +298,7 @@ Both deposit paths credit the requested amount rather than the amount actually r
 
 **Impact.** With a fee-on-transfer stake token, `Σ user.amount` exceeds the contract's real balance and the last stakers to exit cannot withdraw — their `unstake` reverts on the principal transfer. With a fee-on-transfer reward token, `rewardReserve` exceeds the real balance, so the final harvests revert; combined with H-3 that also strands principal in pools where stake and reward token are the same. Rebasing tokens break the invariant in both directions.
 
-PONS and USDG both appear to be standard ERC-20s, so no live pool is affected today. The exposure is forward-looking: `addPool` accepts any address, and the contract gives an operator no signal that a token is unsuitable.
+PLG and USDG both appear to be standard ERC-20s, so no live pool is affected today. The exposure is forward-looking: `addPool` accepts any address, and the contract gives an operator no signal that a token is unsuitable.
 
 **Recommendation.** Measure the balance delta around each `transferFrom` and credit that, or document a hard rule that only standard non-rebasing, non-fee ERC-20s may ever be passed to `addPool`.
 
@@ -392,7 +392,7 @@ Note that `rewardReserve` was itself appended to `PoolInfo` in commit `218548a`.
 
 `rewardReserve` is debited by the full `reward` while `accRewardPerShare` receives a floored quotient. The remainder is credited to nobody and can never be claimed or withdrawn, since `withdrawRewards` is bounded by the already-decremented reserve.
 
-Per settlement the loss is at most `totalStaked / 1e18` wei of reward token. At pool 0's scale that is on the order of `1e-11` PONS per update — economically irrelevant. Anyone can call `claim` once per block to force a settlement and maximize the rounding loss, but the amplification does not make it meaningful at these parameters. It would matter for a pool with a very large `totalStaked` denominated in a low-decimal token.
+Per settlement the loss is at most `totalStaked / 1e18` wei of reward token. At pool 0's scale that is on the order of `1e-11` PLG per update — economically irrelevant. Anyone can call `claim` once per block to force a settlement and maximize the rounding loss, but the amplification does not make it meaningful at these parameters. It would matter for a pool with a very large `totalStaked` denominated in a low-decimal token.
 
 ### L-2 — `EPOCH_DURATION` and `nextEpochEnds()` are dead code that imply behavior that does not exist
 
@@ -437,16 +437,21 @@ The same outdated claim survives in the deployment script header:
 [script/mainnet/10_DeployStaking.s.sol:12-14](script/mainnet/10_DeployStaking.s.sol)
 
 ```solidity
-/// @dev Two pools: PONS staked for PONS rewards over a 90 day program, and USDG staked for PONS at a
+/// @dev Two pools: PLG staked for PLG rewards over a 90 day program, and USDG staked for PLG at a
 ///      zero rate until a rate is set. `fundRewards` moves the whole reward reserve up front
 ///      because the contract has no accounting that would stop `claim` reverting if underfunded.
 ```
 
+The `PONS` naming in this header has since been corrected to `PLG`; the `claim`-reverting claim in
+the last line is still wrong and still needs fixing.
+
 ### L-7 — `deployments/4663.json` no longer matches the chain
 
-The `staking` block in [deployments/4663.json](deployments/4663.json) describes two pools seeded with the old launchpad PLG and states *"live pools 0/1 were seeded with the old launchpad PLG and have not been rotated yet"*. Section 2.1 shows there are three pools, that 0 and 1 were emptied and deactivated, and that pool 2 runs on the correct token. The recorded `rewardReserve` of `550000e18` for pool 0 is now 0.
+The `staking` block in [deployments/4663.json](deployments/4663.json) described two pools seeded with the old launchpad PLG and stated *"live pools 0/1 were seeded with the old launchpad PLG and have not been rotated yet"*. Section 2.1 shows there are three pools, that 0 and 1 were emptied and deactivated, and that pool 2 runs on the correct token. The recorded `rewardReserve` of `550000e18` for pool 0 is now 0.
 
-This file is the reference an operator or integrator reaches for first. In its current state it would lead someone to integrate against a dead pool, or to conclude that a remediation still needs doing when it has already been done. The token naming adds to the confusion: the repo calls `0x1BE30101…` "PONS" everywhere, but the token's own `symbol()` is `PLG`, and pool 2 carries the on-chain name `PONS Staking` while staking a token called `PLG`.
+This file is the reference an operator or integrator reaches for first. In that state it would lead someone to integrate against a dead pool, or to conclude that a remediation still needs doing when it has already been done. The token naming added to the confusion: the repo called `0x1BE30101…` "PONS" everywhere, but the token's own `symbol()` is `PLG`.
+
+**Resolved.** The file now lists all three pools with their real reserves and status, and the repo uses `PLG` for `0x1BE30101…` throughout. Because the abandoned launchpad token `0xDfC0a301…` reports the same `PLG` symbol, every reference now carries its address and the file states explicitly that integrations must match on address, not symbol. One thing code cannot fix: pool 2's on-chain name is still `PONS Staking`, which only a `setPoolName` transaction can change.
 
 ## 6. Test coverage
 
@@ -488,7 +493,7 @@ Recording these so a future reviewer does not have to re-derive them:
 4. Document the owner's ability to withdraw the unaccrued reward budget wherever staking is presented to users (H-2).
 5. Change the frontend to always call `stake(uint256,uint256,uint256)` with an explicit duration, and show the resulting unlock date for the whole position before signing (M-2).
 6. Extend the upgrade rules in [deployments/4663.json](deployments/4663.json) to state that `PoolInfo` is frozen and that `PledgeStaking`'s inheritance list must not change (M-4, M-5).
-7. Bring [deployments/4663.json](deployments/4663.json) back in sync with the chain: three pools, 0 and 1 retired, pool 2 on `0x1BE30101…` (L-7). Settle on one name for that token, since the repo says "PONS" and the token says `PLG`.
+7. ~~Bring [deployments/4663.json](deployments/4663.json) back in sync with the chain: three pools, 0 and 1 retired, pool 2 on `0x1BE30101…` (L-7). Settle on one name for that token, since the repo says "PONS" and the token says `PLG`.~~ Done: the file lists all three pools, and the repo now calls `0x1BE30101…` `PLG` everywhere. Still outstanding on chain: `setPoolName(2, "PLG Staking")` and `setPoolName(0, "PLG Staking (retired)")` to clear the name collision.
 8. Correct the stale claims in [product.md](product.md) lines 255, 283, 608 and in the header of [10_DeployStaking.s.sol](script/mainnet/10_DeployStaking.s.sol) (L-6).
 
 **Code changes for a future `PledgeStaking` v1.1, should one be built.**

@@ -6,7 +6,7 @@
   "rpcUrl": "https://rpc.mainnet.chain.robinhood.com",
   "explorer": "https://robinhoodchain.blockscout.com",
   "deployedAt": "2026-09-09",
-  "note": "Full redeploy. Every protocol contract sits behind a branded ERC1967 proxy, including the surplus buffer and stability pool, which were bare contracts in v1. The protocol token is the PONS-launched ERC-20 (on-chain name Pledge Finance / PLG) and is deliberately not upgradeable.",
+  "note": "Full redeploy. Every protocol contract sits behind a branded ERC1967 proxy, including the surplus buffer and stability pool, which were bare contracts in v1. The protocol token is PLG (on-chain name Pledge Finance, symbol PLG, 18 decimals) and is deliberately not upgradeable. The abandoned launchpad token at 0xDfC0a301 carries the same PLG symbol, so always match on address.",
   "brandedProxies": {
     "source": "src/upgrade/PledgeFinanceProxies.sol",
     "why": "A contract's name is bound to its bytecode, so a plain ERC1967Proxy always displays as `ERC1967Proxy` on an explorer. Each module therefore gets an empty subclass of ERC1967Proxy carrying a Pledge Finance name. They add no behavior: storage, the ERC1967 implementation slot, and upgradeToAndCall all work exactly as with a plain proxy.",
@@ -35,7 +35,7 @@
     "PledgeFinanceSurplusBuffer": "0xc6D477491ACE30fa5651ac61C735C2B636B095c4",
     "PledgeFinanceStabilityPool": "0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D",
     "PledgeFinanceStaking": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
-    "PONS": "0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
+    "PLG": "0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
     "PaxosUSDG": "0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168",
     "RobinhoodNVDA": "0xd0601CE157Db5bdC3162BbaC2a2C8aF5320D9EEC",
     "RobinhoodSPY": "0x117cc2133c37B721F49dE2A7a74833232B3B4C0C",
@@ -62,25 +62,39 @@
   "staking": {
     "proxy": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
     "implementation": "0x4de94A31e0725270b047820293e784bb62363Be3",
-    "rewardToken": "PONS going forward; live pools 0/1 were seeded with the old launchpad PLG and have not been rotated yet",
+    "rewardToken": "PLG 0x1BE30101 going forward; pools 0/1 were seeded with the old launchpad PLG 0xDfC0a301 and are retired",
     "canonicalToken": "0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
     "pools": {
       "0": {
         "name": "PLG Staking",
+        "status": "retired",
         "stakeToken": "old launchpad PLG 0xDfC0a301CA6F62c32800C4827974ECac64BC7e38",
         "rewardToken": "old launchpad PLG",
         "minLock": "1 day",
         "lock": "90 days",
-        "rewardReserve": "550000e18",
-        "rewardRatePerSecond": "70730452674897119"
+        "rewardReserve": "0",
+        "rewardRatePerSecond": "70730452674897119",
+        "note": "Reserve was withdrawn during the rotation. Pools cannot be deleted, so this stays visible forever; its on-chain name still collides with pool 2 and should be renamed to 'PLG Staking (retired)'."
       },
       "1": {
         "name": "USDG Staking",
+        "status": "retired",
         "stakeToken": "USDG",
         "rewardToken": "old launchpad PLG",
         "minLock": "0",
         "lock": "0",
         "rewardReserve": "0"
+      },
+      "2": {
+        "name": "PONS Staking",
+        "status": "active but unfunded",
+        "stakeToken": "PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
+        "rewardToken": "PLG 0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
+        "minLock": "1 day",
+        "lock": "90 days",
+        "rewardReserve": "0",
+        "rewardRatePerSecond": "70730452674897119",
+        "note": "The canonical pool. Its on-chain name is still 'PONS Staking' and must be renamed to 'PLG Staking'; setPoolName is the only way to change it. Reserve is 0, so it currently pays nothing: fund it with 550000e18 for a 90 day program before opening it."
       }
     }
   },

@@ -28,6 +28,14 @@ Kontrak staking yang benar punya 3 pool:
 
 Pool 2 kecepatan hadiahnya 6.111,11 PLG per hari, kunci 1–90 hari.
 
+**Kenapa masih ada tulisan "PONS" di tabel ini?** Dulu repo menyebut token
+`0x1BE30101…` dengan nama "PONS". Seluruh repo sudah diganti jadi `PLG`, sesuai
+`symbol()` token itu sendiri. Tapi nama pool 2 di dalam kontrak masih `"PONS Staking"`,
+dan itu hanya bisa diubah lewat transaksi — lihat Langkah 2.
+
+Hati-hati satu hal: PLG lama `0xDfC0a301…` juga memakai simbol `PLG`. Jadi keduanya
+tidak bisa dibedakan dari simbolnya. Selalu cocokkan dengan alamat.
+
 **Pool tidak bisa dihapus.** Daftar pool di kontrak hanya bisa ditambah, dan token
 sebuah pool tidak bisa diganti. Jadi pool 0 dan 1 akan selamanya ada di sana. Yang
 bisa dilakukan hanya membiarkannya mati — dan itu sudah.
