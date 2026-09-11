@@ -144,6 +144,61 @@ for i in 0 1 2; do cast call $NEW "poolNames(uint256)(string)" $i --rpc-url $RPC
 Harus keluar `PLG Staking (retired)`, `USDG Staking (retired)`, `PLG Staking`. Tidak
 boleh ada lagi tulisan PONS.
 
+### Langkah 2b — Pasang upgrade bonus kunci
+
+Tanpa langkah ini, slider 1–90 hari cuma merugikan yang memakainya: hadiahnya sama
+saja, tapi uangnya terkunci lebih lama. Upgrade ini yang membuat mengunci lebih lama
+benar-benar dibayar lebih besar — 1,00x di 1 hari sampai 3,00x di 90 hari.
+
+**Ini bukan kontrak baru.** Alamatnya tetap `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07`.
+Yang di-deploy adalah kode barunya saja, lalu alamat lama diarahkan ke kode itu. Daftar
+pool, namanya, saldo hadiah, dan pemiliknya semua tidak tersentuh. Website dan admin
+dashboard tidak perlu diubah atau di-deploy ulang — keduanya sudah menunggu fitur ini
+dan menyala sendiri begitu upgrade-nya mendarat.
+
+Upgrade ini sekalian membawa `emergencyWithdraw`, jalan keluar untuk menarik pokok
+tanpa menyentuh token hadiah.
+
+**Syarat mutlak: tidak boleh ada satu pun yang sedang staking.** Upgrade ini mengubah
+satuan pembagian hadiah dari "per token" menjadi "per bobot". Utang hadiah milik posisi
+yang sudah jalan tercatat dalam satuan lama, dan tidak ada cara menulis ulangnya —
+kontrak tidak menyimpan daftar staker. Jadi posisi yang terbuka akan salah hitung.
+Skripnya memeriksa ini sendiri dan berhenti kalau ada yang staking. Saat ini ketiga
+pool masih kosong, jadi aman — tapi ini alasan kuat untuk **menjalankannya sebelum
+pool diisi dan dibuka**.
+
+Harus dijalankan **sebelum** kepemilikan dipindah ke timelock.
+
+```bash
+export DEPLOYER_PRIVATE_KEY=...   # dompet pemilik 0x82FBf398…
+RPC=https://rpc.mainnet.chain.robinhood.com
+
+# 1. Uji dulu tanpa mengirim apa pun — wajib
+forge script script/mainnet/14_UpgradeStakingWithBoost.s.sol --rpc-url $RPC
+
+# 2. Kalau lognya benar, baru kirim
+forge script script/mainnet/14_UpgradeStakingWithBoost.s.sol --rpc-url $RPC --broadcast
+```
+
+Lognya harus menampilkan pengali 10000 di 1 hari, 16516 di 30 hari, dan 30000 di 90
+hari — yaitu 1,00x, 1,65x, dan 3,00x. Skrip juga memeriksa sendiri sesudah mengirim
+bahwa kode barunya benar-benar hidup; kalau tidak, dia gagal dengan pesan yang jelas.
+
+Catat alamat implementation yang keluar di log ke `deployments/4663.json`.
+
+Cek hasilnya:
+
+```bash
+NEW=0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
+cast call $NEW "maxBoostBps(uint256)(uint256)" 2 --rpc-url $RPC          # 30000
+cast call $NEW "multiplierBps(uint256,uint256)(uint256)" 2 86400 --rpc-url $RPC   # 10000
+cast call $NEW "multiplierBps(uint256,uint256)(uint256)" 2 7776000 --rpc-url $RPC # 30000
+```
+
+Angka 3,00x bisa diubah kapan saja lewat admin dashboard, field "Reward multiplier at
+the longest lock", tanpa upgrade lagi. Batasnya dikunci di 1x sampai 10x supaya satu
+whale berkunci panjang tidak bisa menyedot seluruh emisi.
+
 ### Langkah 3 — Tentukan rentang kunci
 
 Sekarang 1 hari sampai 90 hari. User memilih sendiri di dalam rentang itu.
