@@ -138,6 +138,123 @@ contract StakingBudgetForkTest is Test {
         }
     }
 
+    /**
+     * The lock has to hold, or every duration promised on the staking page is decoration. Both
+     * exit paths are checked: `unstake`, and `emergencyWithdraw`, whose name invites the
+     * assumption that it is a way out of the lock. It is not — it is an escape from a broken
+     * reward token, and it enforces the same lock.
+     */
+    function test_lockCannotBeEscaped() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        _openPool(967, 90 days, 1 days, 90 days);
+        _stakeAs(budi, 10_000 * ONE, 90 days);
+
+        vm.warp(block.timestamp + 89 days);
+
+        vm.prank(budi);
+        vm.expectRevert(PledgeStaking.LockActive.selector);
+        STAKING.unstake(POOL, 10_000 * ONE);
+
+        vm.prank(budi);
+        vm.expectRevert(PledgeStaking.LockActive.selector);
+        STAKING.emergencyWithdraw(POOL);
+
+        // Rewards are not locked, only principal. Claiming mid-lock has to keep working, or
+        // there is no reason for anyone to pick the long lock in the first place.
+        uint256 owed = STAKING.pendingReward(POOL, budi);
+        assertGt(owed, 0, "no rewards accrued while locked");
+        vm.prank(budi);
+        STAKING.claim(POOL);
+        assertEq(PLG.balanceOf(budi), owed, "claim while locked was not paid");
+
+        vm.warp(block.timestamp + 1 days + 1);
+        vm.prank(budi);
+        STAKING.unstake(POOL, 10_000 * ONE);
+        assertGe(PLG.balanceOf(budi), 10_000 * ONE, "principal not returned in full");
+    }
+
+    /// Pausing must stop the meter without trapping anyone who is already unlocked.
+    function test_pauseStopsAccrualButNotTheExit() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        _openPool(967, 30 days, 1 days, 30 days);
+        _stakeAs(ani, 10_000 * ONE, 1 days);
+
+        vm.warp(block.timestamp + 2 days);
+        uint256 owedAtPause = STAKING.pendingReward(POOL, ani);
+        assertGt(owedAtPause, 0, "no rewards before pause");
+
+        vm.prank(OWNER);
+        STAKING.setPoolActive(POOL, false);
+
+        vm.warp(block.timestamp + 10 days);
+        assertEq(STAKING.pendingReward(POOL, ani), owedAtPause, "rewards still accruing after pause");
+
+        // The lock has expired, so a pause must not stand between a staker and their money.
+        vm.prank(ani);
+        STAKING.unstake(POOL, 10_000 * ONE);
+        assertEq(PLG.balanceOf(ani), 10_000 * ONE + owedAtPause, "cannot exit while pool is paused");
+    }
+
+    /**
+     * Demonstrates audit finding H-2, which is still open. Not a bug in the sense of broken code
+     * -- the bound holds and already-earned rewards survive -- but a trust assumption a staker
+     * cannot see or opt out of, and it belongs in a test so nobody rediscovers it in production.
+     */
+    function test_ownerCanStopRewardsWhileStakersStayLocked() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        _openPool(967, 90 days, 1 days, 90 days);
+        _stakeAs(budi, 10_000 * ONE, 90 days);
+
+        vm.warp(block.timestamp + 10 days);
+        uint256 earnedSoFar = STAKING.pendingReward(POOL, budi);
+        assertGt(earnedSoFar, 0, "ten days with no rewards");
+
+        // The half that is protected: what has already accrued has left the reserve, so claiming
+        // it is unaffected by anything the owner does next.
+        vm.prank(budi);
+        STAKING.claim(POOL);
+        assertEq(PLG.balanceOf(budi), earnedSoFar, "already-earned rewards not paid in full");
+
+        (,,,,,,,,, uint256 reserve) = STAKING.pools(POOL);
+        vm.prank(OWNER);
+        STAKING.withdrawRewards(POOL, OWNER, reserve);
+
+        // The half that is not: every future reward is gone in one owner transaction.
+        vm.warp(block.timestamp + 50 days);
+        assertEq(STAKING.pendingReward(POOL, budi), 0, "emissions remain after reserve emptied");
+
+        // And the staker cannot respond. Thirty days still to run on a pool that now pays nothing.
+        vm.prank(budi);
+        vm.expectRevert(PledgeStaking.LockActive.selector);
+        STAKING.unstake(POOL, 10_000 * ONE);
+
+        emit log("H-2 confirmed: owner can stop all rewards while stakers cannot exit");
+        emit log_named_decimal_uint("  rewards that survived (PLG)", earnedSoFar, 18);
+        emit log_named_decimal_uint("  budget withdrawn by owner (PLG)", reserve, 18);
+    }
+
+    /// Shared owner-side opening used by the behavioural tests, which do not vary the budget.
+    function _openPool(uint256 budgetWhole, uint256 campaign, uint256 minLock, uint256 maxLock) internal {
+        uint256 budget = budgetWhole * ONE;
+        deal(address(PLG), OWNER, budget);
+        vm.startPrank(OWNER);
+        STAKING.setLockDuration(POOL, minLock, maxLock);
+        STAKING.setRewardRate(POOL, budget / campaign);
+        PLG.approve(address(STAKING), budget);
+        STAKING.fundRewards(POOL, budget);
+        STAKING.setPoolActive(POOL, true);
+        vm.stopPrank();
+    }
+
     function _c(string memory label, uint256 budget, uint256 periods, uint256 stakeLong, uint256 stakeShort)
         internal
         pure
