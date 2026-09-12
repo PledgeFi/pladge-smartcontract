@@ -362,8 +362,8 @@ contract StakingBudgetForkTest is Test {
     function _emit(Campaign memory c, Outcome memory o) internal {
         emit log("");
         emit log(c.label);
-        emit log_named_uint("  campaign length    (day)", c.periods);
-        emit log_named_decimal_uint("  paid per day        (PLG)", o.perUnit, 18);
+        emit log_named_uint(string.concat("  campaign length    (", unitName, ")"), c.periods);
+        emit log_named_decimal_uint(string.concat("  paid per ", unitName, "       (PLG)"), o.perUnit, 18);
         emit log_named_uint("  rewardRatePerSecond (wei)", o.ratePerSecond);
         emit log_named_decimal_uint("  stake per person   (PLG)", c.stakeLong * ONE, 18);
         emit log_named_decimal_uint("  Budi long lock     (PLG)", o.longEarned, 18);
