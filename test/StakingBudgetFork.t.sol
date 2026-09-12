@@ -7,7 +7,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {PledgeStaking} from "../src/core/PledgeStaking.sol";
 
 /**
- * Rehearses a full staking campaign against the live mainnet contract, on a fork.
+ * Rehearses whole staking campaigns against the live mainnet contract, on a fork.
  *
  * The point is the reward rate. Setting a rate by hand and funding separately is how a pool goes
  * dry mid-campaign: the two numbers are independent, so nothing stops you from promising 6,111
@@ -25,7 +25,8 @@ import {PledgeStaking} from "../src/core/PledgeStaking.sol";
  *   FORK_RPC=https://rpc.mainnet.chain.robinhood.com \
  *   forge test --match-contract StakingBudgetFork -vv
  *
- * Knobs: UNIT (minute|day), PERIODS, BUDGET, MIN_LOCK, MAX_LOCK, STAKE_LONG, STAKE_SHORT.
+ * Knobs for the single-campaign test: UNIT (minute|day), PERIODS, BUDGET, MIN_LOCK, MAX_LOCK,
+ * STAKE_LONG, STAKE_SHORT. The scenario table ignores them and runs its own fixed set.
  */
 contract StakingBudgetForkTest is Test {
     PledgeStaking constant STAKING = PledgeStaking(0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07);
@@ -39,55 +40,141 @@ contract StakingBudgetForkTest is Test {
     address budi = makeAddr("budi"); // locks long, should earn the full boost
     address ani = makeAddr("ani"); // locks short, the 1.00x baseline
 
+    /// One campaign to rehearse. Amounts in whole PLG; durations in `unitSeconds`.
+    struct Campaign {
+        string label;
+        uint256 budget;
+        uint256 periods;
+        uint256 minLockUnits;
+        uint256 maxLockUnits;
+        uint256 stakeLong;
+        uint256 stakeShort;
+    }
+
+    struct Outcome {
+        uint256 perUnit; // emission per time unit, wei
+        uint256 ratePerSecond;
+        uint256 longEarned;
+        uint256 shortEarned;
+        uint256 paid;
+        uint256 reserveLeft;
+        uint256 longAprBps;
+        uint256 shortAprBps;
+    }
+
     string unitName;
     uint256 unitSeconds;
-    uint256 periods;
-    uint256 budget;
-    uint256 minLock;
-    uint256 maxLock;
-    uint256 campaign;
-    uint256 rate;
+    bool forked;
 
     function setUp() public {
         string memory rpc = vm.envOr("FORK_RPC", string(""));
         if (bytes(rpc).length == 0) return;
         vm.createSelectFork(rpc);
+        forked = true;
 
         bool perMinute = keccak256(bytes(vm.envOr("UNIT", string("day")))) == keccak256("minute");
         unitName = perMinute ? "menit" : "hari";
         unitSeconds = perMinute ? 60 : 1 days;
-
-        periods = vm.envOr("PERIODS", uint256(30));
-        budget = vm.envOr("BUDGET", uint256(967)) * ONE;
-        minLock = vm.envOr("MIN_LOCK", uint256(1)) * unitSeconds;
-        // Defaulting the longest lock to the campaign length makes every position expire exactly
-        // when the money runs out, so the boost applies evenly across the whole run.
-        maxLock = vm.envOr("MAX_LOCK", periods) * unitSeconds;
-        campaign = periods * unitSeconds;
-
-        // The one number that matters: spend the whole budget over the campaign, no more.
-        rate = budget / campaign;
     }
 
+    /// A single campaign, fully configurable from the environment.
     function test_budgetCoversCampaignExactly() public {
-        if (unitSeconds == 0) {
+        if (!forked) {
             vm.skip(true);
             return;
         }
 
-        uint256 stakeLong = vm.envOr("STAKE_LONG", uint256(10_000)) * ONE;
-        uint256 stakeShort = vm.envOr("STAKE_SHORT", uint256(10_000)) * ONE;
+        uint256 periods = vm.envOr("PERIODS", uint256(30));
+        Campaign memory c = Campaign({
+            label: "kampanye tunggal",
+            budget: vm.envOr("BUDGET", uint256(967)),
+            periods: periods,
+            minLockUnits: vm.envOr("MIN_LOCK", uint256(1)),
+            // Defaulting the longest lock to the campaign length makes every position expire
+            // exactly when the money runs out, so the boost applies evenly across the whole run.
+            maxLockUnits: vm.envOr("MAX_LOCK", periods),
+            stakeLong: vm.envOr("STAKE_LONG", uint256(10_000)),
+            stakeShort: vm.envOr("STAKE_SHORT", uint256(10_000))
+        });
 
-        _configurePool();
-        _report("--- setelan kampanye ---");
-        emit log_named_uint("panjang kampanye (detik)", campaign);
-        emit log_named_decimal_uint("anggaran (PLG)", budget, 18);
-        emit log_named_string("satuan waktu", unitName);
-        emit log_named_decimal_uint("dibayar per satuan (PLG)", rate * unitSeconds, 18);
-        emit log_named_uint("rewardRatePerSecond (wei)", rate);
-        emit log_named_uint("kunci terpendek (detik)", minLock);
-        emit log_named_uint("kunci terpanjang (detik)", maxLock);
-        emit log_named_uint("pengali kunci terpanjang (bps)", STAKING.multiplierBps(POOL, maxLock));
+        Outcome memory o = _runCampaign(c);
+        _emit(c, o);
+        _assertBudgetHeld(c, o);
+    }
+
+    /**
+     * Side-by-side comparison of the budgets actually on the table, at a fixed 20,000 PLG of
+     * deposits. Each case runs the same live contract from the same fork block and is reverted
+     * afterwards, so no case can contaminate the next.
+     *
+     * Read the APR column, not the PLG column. It is the number that decides whether anyone
+     * shows up, and it is the one that falls apart when the budget is too thin.
+     */
+    function test_scenarioTable() public {
+        if (!forked) {
+            vm.skip(true);
+            return;
+        }
+        // The table is denominated in days regardless of UNIT; a minute-scale APR is meaningless.
+        unitSeconds = 1 days;
+        unitName = "hari";
+
+        Campaign[7] memory cases = [
+            _c("A. 967 PLG yang ada -> 7 hari", 967, 7, 10_000, 10_000),
+            _c("B. 967 PLG yang ada -> 30 hari", 967, 30, 10_000, 10_000),
+            _c("C. 967 PLG yang ada -> 90 hari", 967, 90, 10_000, 10_000),
+            _c("D. tambah jadi 42.778 -> 7 hari", 42_778, 7, 10_000, 10_000),
+            _c("E. tambah jadi 183.333 -> 30 hari", 183_333, 30, 10_000, 10_000),
+            _c("F. tambah jadi 550.000 -> 90 hari", 550_000, 90, 10_000, 10_000),
+            _c("G. 550.000 -> 90 hari, tapi TVL 10x", 550_000, 90, 100_000, 100_000)
+        ];
+
+        for (uint256 i = 0; i < cases.length; i++) {
+            uint256 snap = vm.snapshotState();
+            Outcome memory o = _runCampaign(cases[i]);
+            _emit(cases[i], o);
+            _assertBudgetHeld(cases[i], o);
+            vm.revertToState(snap);
+        }
+    }
+
+    function _c(string memory label, uint256 budget, uint256 periods, uint256 stakeLong, uint256 stakeShort)
+        internal
+        pure
+        returns (Campaign memory)
+    {
+        return Campaign({
+            label: label,
+            budget: budget,
+            periods: periods,
+            minLockUnits: 1,
+            maxLockUnits: periods,
+            stakeLong: stakeLong,
+            stakeShort: stakeShort
+        });
+    }
+
+    /// Configure, fund, open, stake, run the clock out, settle. Returns what everyone walked away with.
+    function _runCampaign(Campaign memory c) internal returns (Outcome memory o) {
+        uint256 budget = c.budget * ONE;
+        uint256 campaign = c.periods * unitSeconds;
+        uint256 minLock = c.minLockUnits * unitSeconds;
+        uint256 maxLock = c.maxLockUnits * unitSeconds;
+        uint256 stakeLong = c.stakeLong * ONE;
+        uint256 stakeShort = c.stakeShort * ONE;
+
+        // The one number that matters: spend the whole budget over the campaign, no more.
+        o.ratePerSecond = budget / campaign;
+        o.perUnit = o.ratePerSecond * unitSeconds;
+
+        deal(address(PLG), OWNER, budget);
+        vm.startPrank(OWNER);
+        STAKING.setLockDuration(POOL, minLock, maxLock);
+        STAKING.setRewardRate(POOL, o.ratePerSecond);
+        PLG.approve(address(STAKING), budget);
+        STAKING.fundRewards(POOL, budget);
+        STAKING.setPoolActive(POOL, true);
+        vm.stopPrank();
 
         _stakeAs(budi, stakeLong, maxLock);
         _stakeAs(ani, stakeShort, minLock);
@@ -96,10 +183,10 @@ contract StakingBudgetForkTest is Test {
 
         // Mid-campaign claim, to prove rewards are reachable before the lock expires.
         vm.warp(start + campaign / 2);
-        uint256 budiMid = STAKING.pendingReward(POOL, budi);
+        uint256 mid = STAKING.pendingReward(POOL, budi);
         vm.prank(budi);
         STAKING.claim(POOL);
-        assertEq(PLG.balanceOf(budi), budiMid, "klaim tengah jalan tidak sesuai pendingReward");
+        assertEq(PLG.balanceOf(budi), mid, "klaim tengah jalan tidak sesuai pendingReward");
 
         vm.warp(start + campaign);
 
@@ -113,48 +200,38 @@ contract StakingBudgetForkTest is Test {
         vm.prank(ani);
         STAKING.unstake(POOL, stakeShort);
 
-        uint256 budiEarned = PLG.balanceOf(budi) - stakeLong;
-        uint256 aniEarned = PLG.balanceOf(ani) - stakeShort;
-        uint256 paid = budiEarned + aniEarned;
-        (,,,,,,,,, uint256 reserveLeft) = STAKING.pools(POOL);
+        o.longEarned = PLG.balanceOf(budi) - stakeLong;
+        o.shortEarned = PLG.balanceOf(ani) - stakeShort;
+        o.paid = o.longEarned + o.shortEarned;
+        (,,,,,,,,, o.reserveLeft) = STAKING.pools(POOL);
 
-        _report("--- hasil ---");
-        emit log_named_decimal_uint("Budi, kunci terpanjang (PLG)", budiEarned, 18);
-        emit log_named_decimal_uint("Ani, kunci terpendek  (PLG)", aniEarned, 18);
-        emit log_named_decimal_uint("total dibayarkan      (PLG)", paid, 18);
-        emit log_named_decimal_uint("sisa di kantong       (PLG)", reserveLeft, 18);
+        // Annualised return on principal. This is what a staker compares against every other
+        // place they could park the same tokens, and the only figure that answers "worth it?".
+        o.longAprBps = (o.longEarned * 365 days * BPS) / (stakeLong * campaign);
+        o.shortAprBps = (o.shortEarned * 365 days * BPS) / (stakeShort * campaign);
+    }
+
+    function _assertBudgetHeld(Campaign memory c, Outcome memory o) internal pure {
+        uint256 budget = c.budget * ONE;
+        uint256 campaign = c.periods * 1 days;
 
         // The whole claim of this harness: the pool pays out its budget and stops, never more.
-        assertLe(paid, budget, "membayar lebih dari anggaran");
+        assertLe(o.paid, budget, "membayar lebih dari anggaran");
 
         // Two separate roundings, worth keeping apart. The reserve keeps whatever `budget /
         // campaign` truncated -- at most one wei per second, and provably so. Anything bigger
         // means the emission stalled and stakers were quietly short-changed.
-        assertLe(reserveLeft, campaign, "kantong tidak habis terpakai - emisi tersendat");
+        assertLe(o.reserveLeft, campaign, "kantong tidak habis terpakai - emisi tersendat");
 
         // The rest is per-share rounding in accRewardPerShare, which strands a few wei in the
         // contract forever. It scales with staker count, not with time or budget, so the only
         // sane bound is a relative one. 0.0001% is still thousands of times looser than observed.
-        assertApproxEqRel(paid, budget, 0.000001e18, "terlalu banyak yang tersangkut di pembulatan");
+        assertApproxEqRel(o.paid, budget, 0.000001e18, "terlalu banyak yang tersangkut di pembulatan");
 
         // Equal principal, so the split is the boost and nothing else.
-        if (stakeLong == stakeShort) {
-            uint256 boost = STAKING.multiplierBps(POOL, maxLock);
-            assertApproxEqRel(budiEarned * BPS, aniEarned * boost, 0.001e18, "pembagian boost meleset");
+        if (c.stakeLong == c.stakeShort) {
+            assertApproxEqRel(o.longEarned * BPS, o.shortEarned * 3 * BPS, 0.001e18, "pembagian boost meleset");
         }
-    }
-
-    /// Owner-side setup: lock window, derived rate, funding, and opening the pool.
-    function _configurePool() internal {
-        deal(address(PLG), OWNER, budget);
-
-        vm.startPrank(OWNER);
-        STAKING.setLockDuration(POOL, minLock, maxLock);
-        STAKING.setRewardRate(POOL, rate);
-        PLG.approve(address(STAKING), budget);
-        STAKING.fundRewards(POOL, budget);
-        STAKING.setPoolActive(POOL, true);
-        vm.stopPrank();
     }
 
     function _stakeAs(address who, uint256 amount, uint256 lock) internal {
@@ -165,7 +242,17 @@ contract StakingBudgetForkTest is Test {
         vm.stopPrank();
     }
 
-    function _report(string memory heading) internal {
-        emit log(heading);
+    function _emit(Campaign memory c, Outcome memory o) internal {
+        emit log("");
+        emit log(c.label);
+        emit log_named_uint("  lama kampanye     (hari)", c.periods);
+        emit log_named_decimal_uint("  dibayar per hari   (PLG)", o.perUnit, 18);
+        emit log_named_uint("  rewardRatePerSecond (wei)", o.ratePerSecond);
+        emit log_named_decimal_uint("  titipan tiap orang (PLG)", c.stakeLong * ONE, 18);
+        emit log_named_decimal_uint("  Budi kunci panjang (PLG)", o.longEarned, 18);
+        emit log_named_decimal_uint("  Ani  kunci pendek  (PLG)", o.shortEarned, 18);
+        emit log_named_decimal_uint("  APR Budi              (%)", o.longAprBps, 2);
+        emit log_named_decimal_uint("  APR Ani               (%)", o.shortAprBps, 2);
+        emit log_named_decimal_uint("  sisa di kantong    (PLG)", o.reserveLeft, 18);
     }
 }
