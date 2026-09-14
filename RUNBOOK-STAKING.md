@@ -1,85 +1,85 @@
-# Runbook: Membuka Staking PLG
+# Runbook: Opening PLG Staking
 
-Dokumen ini berisi langkah on-chain yang harus dijalankan pemilik kontrak.
-Perbaikan kode di website dan admin dashboard sudah selesai — langkah di bawah ini
-tidak bisa dikerjakan dari kode karena butuh tanda tangan wallet owner.
+This document lists the on-chain steps the contract owner must run.
+Website and admin-dashboard code fixes are already done — the steps below
+cannot be done from code because they need a signature from the owner wallet.
 
-Tanggal pemeriksaan chain: 12 September 2026.
+Chain inspection date: 12 September 2026.
 
 ---
 
-## 1. Kondisi sekarang
+## 1. Current state
 
-| Hal | Nilai |
+| Item | Value |
 | --- | --- |
-| Kontrak staking yang benar | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` |
-| Kontrak staking lama (jangan dipakai) | `0xA317886027c83183C22d9526bd09e9837CBc38F6` |
-| Token PLG yang benar | `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` |
-| Owner semua kontrak | `0x82FBf39835a885C1CdA3D756FB6AA79802f29e92` |
-| Timelock (belum dipakai) | `0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD` |
+| Live staking contract | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` |
+| Old staking contract (do not use) | `0xA317886027c83183C22d9526bd09e9837CBc38F6` |
+| Live PLG token | `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` |
+| Owner of every contract | `0x82FBf39835a885C1CdA3D756FB6AA79802f29e92` |
+| Timelock (not in use yet) | `0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD` |
 
-Kontrak staking yang benar punya 3 pool:
+The live staking contract has 3 pools:
 
-| # | Nama di chain sekarang | Token stake | Status | Rencana |
+| # | On-chain name today | Stake token | Status | Plan |
 | --- | --- | --- | --- | --- |
-| 0 | `PLG Staking` | PLG **lama** `0xDfC0a301…` | mati | ganti nama jadi `PLG Staking (retired)` |
-| 1 | `USDG Staking` | USDG `0x5fc5360D…` | mati | ganti nama jadi `USDG Staking (retired)` |
-| 2 | `PONS Staking` | **PLG `0x1BE30101…`** | aktif | ganti nama jadi `PLG Staking` — ini satu-satunya pool yang dipakai |
+| 0 | `PLG Staking` | **old** PLG `0xDfC0a301…` | inactive | rename to `PLG Staking (retired)` |
+| 1 | `USDG Staking` | USDG `0x5fc5360D…` | inactive | rename to `USDG Staking (retired)` |
+| 2 | `PONS Staking` | **PLG `0x1BE30101…`** | active | rename to `PLG Staking` — this is the only pool in use |
 
-Pool 2 kecepatan hadiahnya 6.111,11 PLG per hari, kunci 1–90 hari. Token yang
-di-stake dan token hadiahnya sama-sama `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf`.
+Pool 2 emits 6,111.11 PLG per day, with a 1–90 day lock. The stake token and the
+reward token are both `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf`.
 
-Kolom "Nama di chain sekarang" mencatat apa yang benar-benar ada di blockchain hari
-ini, bukan yang kita inginkan. Jalankan Langkah 2 dan kolom itu berubah.
+The "On-chain name today" column records what is actually on the blockchain
+today, not what we want. Run Step 2 and that column changes.
 
-### Yang TIDAK bisa dilakukan
+### What cannot be done
 
-**Pool 0 dan 1 tidak bisa dihapus, dan tokennya tidak bisa diganti ke PLG baru.**
+**Pools 0 and 1 cannot be deleted, and their tokens cannot be switched to the new PLG.**
 
-Ini batasan kontrak, bukan pilihan kita. Daftar pool di dalam kontrak hanya bisa
-ditambah — tidak ada fungsi untuk menghapus. Dan token sebuah pool ditetapkan sekali
-saat pool dibuat, tidak ada fungsi untuk menggantinya. Jadi pool 0 akan selamanya
-berisi PLG lama, dan pool 1 akan selamanya berisi USDG.
+This is a contract limit, not a choice. The pool list inside the contract can only
+grow — there is no function to remove a pool. A pool's tokens are set once at
+creation, and there is no function to change them. So pool 0 will forever hold the
+old PLG, and pool 1 will forever hold USDG.
 
-Yang bisa dilakukan ada tiga, dan ketiganya sudah atau akan dikerjakan:
+Three things can be done, and all three are already done or will be:
 
-1. Dimatikan supaya tidak ada yang bisa masuk — **sudah**, keduanya `active = false`.
-2. Diberi nama yang jelas supaya tidak tertukar — Langkah 2.
-3. Disembunyikan dari website — **sudah**, website dan admin dashboard hanya
-   menampilkan pool yang hidup. Di admin ada tombol "Show retired" kalau perlu.
+1. Deactivated so nobody can enter — **done**, both are `active = false`.
+2. Given clear names so they cannot be confused — Step 2.
+3. Hidden from the website — **done**, the website and admin dashboard only
+   show live pools. Admin has a "Show retired" button if needed.
 
-Hasil akhirnya: pengguna hanya melihat satu pool, yaitu pool 2 dengan PLG
-`0x1BE30101…`. Pool 0 dan 1 tetap ada di blockchain, tapi tidak terlihat dan tidak
-bisa dimasuki.
+The end result: users only see one pool, pool 2 with PLG `0x1BE30101…`.
+Pools 0 and 1 remain on the blockchain, but they are not visible and cannot
+be entered.
 
-### Jebakan dua token bernama sama
+### Trap: two tokens with the same name
 
-PLG lama `0xDfC0a301…` **juga** memakai simbol `PLG`. Jadi kalau Anda membedakan lewat
-nama atau simbol token, keduanya terlihat identik. Selalu cocokkan alamatnya.
+The old PLG `0xDfC0a301…` **also** uses the symbol `PLG`. So if you distinguish
+them by name or symbol, they look identical. Always match on the address.
 
-| Token | Alamat | Dipakai? |
+| Token | Address | In use? |
 | --- | --- | --- |
-| PLG live | `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` | **ya, ini satu-satunya** |
-| PLG lama (launchpad) | `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38` | tidak, jangan disentuh |
+| Live PLG | `0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf` | **yes, this is the only one** |
+| Old PLG (launchpad) | `0xDfC0a301CA6F62c32800C4827974ECac64BC7e38` | no, do not touch it |
 
-Di kontrak staking lama, pool 0 dan 1 masih berstatus aktif. Tidak ada dana orang di
-dalamnya (total stake nol), tapi selama masih aktif orang bisa masuk ke sana.
+On the old staking contract, pools 0 and 1 are still active. There are no user
+funds in them (total stake is zero), but while they stay active people can still
+deposit into them.
 
-**Hal yang belum bisa saya pastikan:** 1 miliar PLG yang sudah dicetak tidak ada di
-wallet manapun yang tercatat di repo ini, termasuk wallet owner. Anda perlu
-memastikan sendiri wallet mana yang memegang PLG sebelum menjalankan langkah 4.
+**What I could not confirm:** the 1 billion PLG that has been minted is not in
+any wallet recorded in this repo, including the owner wallet. You need to
+confirm which wallet holds the PLG before running step 4.
 
 ---
 
-## 2. Urutan langkah
+## 2. Step order
 
-Urutannya penting. Langkah 6 dikerjakan paling akhir karena setelah itu setiap
-perubahan harus menunggu 48 jam.
+The order matters. Step 6 is last because after that every change must wait 48 hours.
 
-### Langkah 1 — Tutup pool di kontrak lama
+### Step 1 — Close pools on the old contract
 
-Ini yang paling mendesak. Selama pool lama aktif, ada kemungkinan orang menaruh token
-di kontrak yang sudah tidak dipakai.
+This is the most urgent step. While the old pools stay active, someone can deposit
+tokens into a contract that is no longer in use.
 
 ```bash
 export PATH="$HOME/.foundry/bin:$PATH"
@@ -90,103 +90,106 @@ cast send $OLD "setPoolActive(uint256,bool)" 0 false --rpc-url $RPC --private-ke
 cast send $OLD "setPoolActive(uint256,bool)" 1 false --rpc-url $RPC --private-key $OWNER_KEY
 ```
 
-Verifikasi — kolom kesembilan harus `false`:
+Verify — the ninth field must be `false`:
 
 ```bash
 cast call $OLD "pools(uint256)(address,address,uint256,uint256,uint256,uint256,uint256,uint256,bool,uint256)" 0 --rpc-url $RPC
 ```
 
-### Langkah 2 — Hapus nama "PONS", jadikan "PLG Staking"
+### Step 2 — Remove the name "PONS", make it "PLG Staking"
 
-Nama pool tersimpan di dalam kontrak dan website menampilkannya apa adanya. Jadi
-selama transaksi ini belum jalan, pengguna tetap melihat tulisan "PONS Staking",
-sebersih apa pun kode kita.
+Pool names are stored in the contract and the website displays them as-is. So
+until this transaction lands, users still see "PONS Staking", no matter how
+clean the rest of the code is.
 
-Skrip di bawah mengganti nama ketiga pool sekaligus:
+The script below renames all three pools in one go:
 
-| # | Dari | Jadi |
+| # | From | To |
 | --- | --- | --- |
 | 0 | `PLG Staking` | `PLG Staking (retired)` |
 | 1 | `USDG Staking` | `USDG Staking (retired)` |
 | 2 | `PONS Staking` | `PLG Staking` |
 
-Urutannya penting: pool 0 **sudah** memakai nama `"PLG Staking"` padahal isinya token
-lama. Kalau pool 2 diganti duluan, akan ada dua pool bernama sama dan pengguna tidak
-bisa membedakannya. Skrip sudah mengurutkannya dengan benar. Sebelum mengirim apa pun
-dia juga memeriksa bahwa tiap pool berisi token yang diharapkan — dicocokkan lewat
-alamat — dan bahwa pool 0 dan 1 memang sudah mati, supaya label "retired" tidak bohong.
-Kalau ada satu saja yang tidak cocok, skripnya berhenti tanpa mengirim transaksi.
+The order matters: pool 0 **already** uses the name `"PLG Staking"` even though
+it holds the old token. If pool 2 is renamed first, two pools would share the
+same name and users could not tell them apart. The script already orders them
+correctly. Before sending anything it also checks that each pool holds the
+expected token — matched by address — and that pools 0 and 1 are already
+inactive, so the "retired" label is not a lie. If even one check fails, the
+script stops without sending a transaction.
 
 ```bash
-export DEPLOYER_PRIVATE_KEY=...   # dompet pemilik 0x82FBf398…
+export DEPLOYER_PRIVATE_KEY=...   # owner wallet 0x82FBf398…
 RPC=https://rpc.mainnet.chain.robinhood.com
 
-# 1. Uji dulu tanpa mengirim apa pun — wajib
+# 1. Dry-run with no send — required
 forge script script/mainnet/13_RenameStakingPools.s.sol --rpc-url $RPC
 
-# 2. Kalau lognya benar, baru kirim
+# 2. If the log looks right, then broadcast
 forge script script/mainnet/13_RenameStakingPools.s.sol --rpc-url $RPC --broadcast
 ```
 
-Perintah pertama tidak mengirim transaksi, hanya mensimulasikan. Baca lognya: harus
-tertulis nama sebelum dan sesudah. Kalau ada yang janggal, jangan lanjut.
+The first command does not send a transaction; it only simulates. Read the log:
+it must print the name before and after. If anything looks off, do not continue.
 
-Bisa juga lewat admin dashboard kalau lebih nyaman: tekan "Show retired" untuk melihat
-pool 0 dan 1, ganti nama keduanya dulu, baru ganti pool 2 jadi `PLG Staking`.
+You can also do this from the admin dashboard if that is easier: press "Show
+retired" to see pools 0 and 1, rename those two first, then rename pool 2 to
+`PLG Staking`.
 
-Sesudah ini, cek hasilnya:
+Afterward, check the result:
 
 ```bash
 NEW=0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
 for i in 0 1 2; do cast call $NEW "poolNames(uint256)(string)" $i --rpc-url $RPC; done
 ```
 
-Harus keluar `PLG Staking (retired)`, `USDG Staking (retired)`, `PLG Staking`. Tidak
-boleh ada lagi tulisan PONS.
+It must print `PLG Staking (retired)`, `USDG Staking (retired)`, `PLG Staking`.
+There must be no remaining PONS label.
 
-### Langkah 2b — Pasang upgrade bonus kunci
+### Step 2b — Install the lock-boost upgrade
 
-Tanpa langkah ini, slider 1–90 hari cuma merugikan yang memakainya: hadiahnya sama
-saja, tapi uangnya terkunci lebih lama. Upgrade ini yang membuat mengunci lebih lama
-benar-benar dibayar lebih besar — 1,00x di 1 hari sampai 3,00x di 90 hari.
+Without this step, the 1–90 day slider only hurts the people who use it: the
+reward is the same, but the funds stay locked longer. This upgrade is what
+makes a longer lock actually pay more — 1.00x at 1 day up to 3.00x at 90 days.
 
-**Ini bukan kontrak baru.** Alamatnya tetap `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07`.
-Yang di-deploy adalah kode barunya saja, lalu alamat lama diarahkan ke kode itu. Daftar
-pool, namanya, saldo hadiah, dan pemiliknya semua tidak tersentuh. Website dan admin
-dashboard tidak perlu diubah atau di-deploy ulang — keduanya sudah menunggu fitur ini
-dan menyala sendiri begitu upgrade-nya mendarat.
+**This is not a new contract.** The address stays `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07`.
+Only the new bytecode is deployed, then the existing address is pointed at it.
+The pool list, names, reward balances, and owner are all untouched. The website
+and admin dashboard do not need to be changed or redeployed — both already wait
+for this feature and turn it on once the upgrade lands.
 
-Upgrade ini sekalian membawa `emergencyWithdraw`, jalan keluar untuk menarik pokok
-tanpa menyentuh token hadiah.
+This upgrade also brings `emergencyWithdraw`, an exit that returns principal
+without touching the reward token.
 
-**Syarat mutlak: tidak boleh ada satu pun yang sedang staking.** Upgrade ini mengubah
-satuan pembagian hadiah dari "per token" menjadi "per bobot". Utang hadiah milik posisi
-yang sudah jalan tercatat dalam satuan lama, dan tidak ada cara menulis ulangnya —
-kontrak tidak menyimpan daftar staker. Jadi posisi yang terbuka akan salah hitung.
-Skripnya memeriksa ini sendiri dan berhenti kalau ada yang staking. Saat ini ketiga
-pool masih kosong, jadi aman — tapi ini alasan kuat untuk **menjalankannya sebelum
-pool diisi dan dibuka**.
+**Hard requirement: nobody may be staking.** This upgrade changes the reward
+accounting unit from "per token" to "per weight". Reward debt on existing
+positions is recorded in the old unit, and there is no way to rewrite it —
+the contract does not store a list of stakers. Open positions would therefore
+be miscalculated. The script checks this itself and stops if anyone is staking.
+All three pools are empty today, so it is safe — but that is a strong reason
+to **run it before the pool is funded and opened**.
 
-Harus dijalankan **sebelum** kepemilikan dipindah ke timelock.
+Must be run **before** ownership is moved to the timelock.
 
 ```bash
-export DEPLOYER_PRIVATE_KEY=...   # dompet pemilik 0x82FBf398…
+export DEPLOYER_PRIVATE_KEY=...   # owner wallet 0x82FBf398…
 RPC=https://rpc.mainnet.chain.robinhood.com
 
-# 1. Uji dulu tanpa mengirim apa pun — wajib
+# 1. Dry-run with no send — required
 forge script script/mainnet/14_UpgradeStakingWithBoost.s.sol --rpc-url $RPC
 
-# 2. Kalau lognya benar, baru kirim
+# 2. If the log looks right, then broadcast
 forge script script/mainnet/14_UpgradeStakingWithBoost.s.sol --rpc-url $RPC --broadcast
 ```
 
-Lognya harus menampilkan pengali 10000 di 1 hari, 16516 di 30 hari, dan 30000 di 90
-hari — yaitu 1,00x, 1,65x, dan 3,00x. Skrip juga memeriksa sendiri sesudah mengirim
-bahwa kode barunya benar-benar hidup; kalau tidak, dia gagal dengan pesan yang jelas.
+The log must show multipliers of 10000 at 1 day, 16516 at 30 days, and 30000 at
+90 days — that is 1.00x, 1.65x, and 3.00x. After sending, the script also
+checks for itself that the new code is actually live; if not, it fails with a
+clear message.
 
-Catat alamat implementation yang keluar di log ke `deployments/4663.json`.
+Record the implementation address printed in the log into `deployments/4663.json`.
 
-Cek hasilnya:
+Check the result:
 
 ```bash
 NEW=0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
@@ -195,127 +198,133 @@ cast call $NEW "multiplierBps(uint256,uint256)(uint256)" 2 86400 --rpc-url $RPC 
 cast call $NEW "multiplierBps(uint256,uint256)(uint256)" 2 7776000 --rpc-url $RPC # 30000
 ```
 
-Angka 3,00x bisa diubah kapan saja lewat admin dashboard, field "Reward multiplier at
-the longest lock", tanpa upgrade lagi. Batasnya dikunci di 1x sampai 10x supaya satu
-whale berkunci panjang tidak bisa menyedot seluruh emisi.
+The 3.00x figure can be changed at any time from the admin dashboard, field
+"Reward multiplier at the longest lock", with no further upgrade. The bound is
+locked between 1x and 10x so that a single long-locked whale cannot soak up
+the entire emission.
 
-### Langkah 3 — Tentukan rentang kunci
+### Step 3 — Set the lock range
 
-Sekarang 1 hari sampai 90 hari. User memilih sendiri di dalam rentang itu.
-Kalau ingin diubah, pakai admin dashboard: isi "Min lock days" dan "Max lock days",
-lalu tombol "Set lock".
+It is currently 1 day to 90 days. The user picks a value inside that range.
+To change it, use the admin dashboard: fill in "Min lock days" and "Max lock
+days", then the "Set lock" button.
 
-Perubahan ini hanya berlaku untuk stake baru. Orang yang sudah stake tetap memakai
-waktu kunci yang mereka dapat waktu itu.
+The change only applies to new stakes. People who already staked keep the lock
+duration they got at the time.
 
-### Langkah 4 — Isi saldo hadiah
+### Step 4 — Fund the reward reserve
 
-Ini yang membuat staking benar-benar jalan. Tanpa ini pool menerima token tapi tidak
-membayar apa pun.
+This is what actually makes staking work. Without it the pool accepts tokens
+but pays nothing.
 
-Dengan kecepatan sekarang, 6.111,11 PLG per hari:
+At the current rate, 6,111.11 PLG per day:
 
-| Mau jalan berapa lama | Butuh PLG |
+| How long it should run | PLG needed |
 | --- | --- |
-| 30 hari | 183.334 |
-| 90 hari | 550.000 |
-| 180 hari | 1.100.000 |
+| 30 days | 183,334 |
+| 90 days | 550,000 |
+| 180 days | 1,100,000 |
 
-`fundRewards` sengaja tidak dibatasi pemilik — tidak ada `onlyOwner` di situ — jadi
-dompet mana pun yang memegang PLG bisa mengisi kantong hadiah langsung, tanpa harus
-lewat dompet owner.
+`fundRewards` is deliberately not owner-gated — there is no `onlyOwner` on it —
+so any wallet that holds PLG can fill the reward reserve directly, without
+going through the owner wallet.
 
-**Jalur yang dipilih: kirim PLG langsung ke dompet owner `0x82FBf398…`.** Bukan karena
-kontraknya mengharuskan, tapi karena dompet itu sudah memegang native untuk bayar gas.
-Dompet yang punya PLG tapi nol gas tidak bisa mengirim transaksi apa pun — termasuk
-memindahkan PLG-nya sendiri keluar. Itu bukan teori: pada 12 September 2026,
-`0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055` menerima 1.017 PLG dengan saldo native
-nol, dan PLG itu tidak bisa digerakkan sampai dompetnya diberi gas.
+**Chosen path: send PLG directly to the owner wallet `0x82FBf398…`.** Not because
+the contract requires it, but because that wallet already holds native for gas.
+A wallet that has PLG but zero gas cannot send any transaction — including
+moving its own PLG out. That is not theoretical: on 12 September 2026,
+`0x876f12d8043cD7a87D0eb512c29d5Ad58C92B055` received 1,017 PLG with a native
+balance of zero, and that PLG could not be moved until the wallet was given gas.
 
-Jadi kalau memakai dompet selain owner, **isi gasnya dulu, baru kirim PLG-nya.**
+So if you use a wallet other than the owner, **fund gas first, then send the PLG.**
 
 ```bash
 PLG=0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf
-AMOUNT=550000000000000000000000   # 550.000 PLG
+AMOUNT=550000000000000000000000   # 550,000 PLG
 
 cast send $PLG "approve(address,uint256)" $NEW $AMOUNT --rpc-url $RPC --private-key $OWNER_KEY
 cast send $NEW "fundRewards(uint256,uint256)" 2 $AMOUNT --rpc-url $RPC --private-key $OWNER_KEY
 ```
 
-Cara paling mudah lewat admin dashboard: sambungkan dompet yang memegang PLG, buka
-`/staking`, lalu pakai kartu "Fund rewards". Approve-nya otomatis. Kartu itu tidak
-dikunci ke owner, jadi dompet mana pun bisa memakainya.
+The easiest path is the admin dashboard: connect the wallet that holds PLG,
+open `/staking`, then use the "Fund rewards" card. Approve is automatic. That
+card is not locked to the owner, so any wallet can use it.
 
-Kalau saldo PLG yang tersedia lebih kecil dari tabel di atas, jangan dipaksakan: dengan
-kecepatan 6.111,11 PLG per hari, 1.000 PLG habis dalam 4 jam. Pilih antara menambah
-PLG-nya atau menurunkan `setRewardRate` supaya anggarannya bertahan sesuai rencana.
+If the available PLG balance is smaller than the table above, do not force it:
+at 6,111.11 PLG per day, 1,000 PLG lasts about 4 hours. Either add more PLG or
+lower `setRewardRate` so the budget lasts as planned.
 
-Verifikasi — angka terakhir harus sama dengan jumlah yang diisi:
+Verify — the last number must equal the amount funded:
 
 ```bash
 cast call $NEW "pools(uint256)(address,address,uint256,uint256,uint256,uint256,uint256,uint256,bool,uint256)" 2 --rpc-url $RPC
 ```
 
-Setelah ini website akan menampilkan APR dan kolom "Rewards last" berisi 90 hari.
-Selama saldo hadiah masih nol, website menolak stake dan menampilkan peringatan.
+After this the website will show an APR and a "Rewards last" column of 90 days.
+While the reward reserve is still zero, the website refuses stakes and shows a
+warning.
 
-### Langkah 4b — Buka kembali pool 2
+### Step 4b — Reopen pool 2
 
-Pool 2 ditutup pada 12 September 2026 dengan `setPoolActive(2, false)`, karena saat itu
-saldo hadiahnya nol. Membiarkannya terbuka berarti menjebak orang: uang mereka terkunci
-sampai 90 hari sementara bunganya nol, dan halaman staking menjanjikan bonus 3,00x yang
-tidak bisa ditepati.
+Pool 2 was closed on 12 September 2026 with `setPoolActive(2, false)`, because
+the reward reserve was zero at the time. Leaving it open would trap people:
+their funds lock for up to 90 days while the yield is zero, and the staking
+page promises a 3.00x bonus that cannot be paid.
 
-Jangan jalankan ini sebelum Langkah 4 selesai dan saldonya sudah terverifikasi.
+Do not run this before Step 4 is done and the balance has been verified.
 
-Ini satu-satunya langkah di alur pendanaan yang **wajib** dari dompet owner.
+This is the only step in the funding flow that **must** come from the owner wallet.
 
 ```bash
 cast send $NEW "setPoolActive(uint256,bool)" 2 true --rpc-url $RPC --private-key $OWNER_KEY
 ```
 
-Bisa juga lewat admin dashboard, tombol aktif/nonaktif di kartu edit pool.
+You can also do this from the admin dashboard, using the active/inactive toggle
+on the pool edit card.
 
-### Langkah 5 — Upgrade implementasi untuk menambah `emergencyWithdraw`
+### Step 5 — Upgrade the implementation to add `emergencyWithdraw`
 
-Fungsi ini sudah ditulis dan diuji di `src/core/PledgeStaking.sol`. Gunanya: menarik
-pokok tanpa menyentuh token hadiah. `unstake` membayar hadiah lebih dulu, jadi kalau
-transfer hadiah gagal, pokok user ikut tersandera. Ini jalan keluarnya.
+This function is already written and tested in `src/core/PledgeStaking.sol`.
+Its purpose: return principal without touching the reward token. `unstake`
+pays rewards first, so if the reward transfer fails, the user's principal is
+stuck with it. This is the way out.
 
-Fungsi ini **tidak menambah variabel penyimpanan apa pun**, sudah diverifikasi dengan
-membandingkan `forge inspect PledgeStaking storage-layout` sebelum dan sesudah — hasilnya
-identik. Jadi cukup ganti implementasi, **proxy dan semua datanya tetap**.
+This function **does not add any storage variables**. That was verified by
+comparing `forge inspect PledgeStaking storage-layout` before and after — the
+output is identical. So it is enough to swap the implementation; **the proxy
+and all of its data stay**.
 
 ```bash
 cd pladge-smartcontract
 forge build
 
-# Deploy implementasi baru
+# Deploy the new implementation
 forge create src/core/PledgeStaking.sol:PledgeStaking \
   --constructor-args 0x0000000000000000000000000000000000000000 \
   --rpc-url $RPC --private-key $OWNER_KEY
 
-# Arahkan proxy ke implementasi baru (ganti $NEW_IMPL dengan hasil di atas)
+# Point the proxy at the new implementation (replace $NEW_IMPL with the address above)
 cast send $NEW "upgradeToAndCall(address,bytes)" $NEW_IMPL 0x \
   --rpc-url $RPC --private-key $OWNER_KEY
 ```
 
-Verifikasi sesudahnya — harus mengembalikan `0`, bukan error:
+Verify afterward — it must return `0`, not an error:
 
 ```bash
 cast call $NEW "getPosition(uint256,address)(uint256,uint256,uint256,uint256,uint256)" 2 $DEPLOYER --rpc-url $RPC
 ```
 
-Kerjakan ini **sebelum** langkah 6. Sesudah kepemilikan pindah ke timelock, upgrade
-harus antre 48 jam.
+Do this **before** step 6. After ownership moves to the timelock, an upgrade
+must queue for 48 hours.
 
-Catatan: website dan admin dashboard belum memanggil fungsi ini, karena memanggilnya
-sebelum upgrade akan gagal. Setelah upgrade terpasang, tombolnya bisa ditambahkan.
+Note: the website and admin dashboard do not call this function yet, because
+calling it before the upgrade would fail. After the upgrade is in place, the
+button can be added.
 
-### Langkah 6 — Serahkan kepemilikan ke timelock
+### Step 6 — Hand ownership to the timelock
 
-Kerjakan paling akhir, setelah semua angka di atas sudah final. Sesudah ini setiap
-perubahan setting harus antre 48 jam.
+Do this last, after every figure above is final. After this, every settings
+change must queue for 48 hours.
 
 ```bash
 TIMELOCK=0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD
@@ -324,26 +333,27 @@ cast send $NEW "transferOwnership(address)" $TIMELOCK --rpc-url $RPC --private-k
 
 ---
 
-## 3. Yang tidak dikerjakan di sini
+## 3. What is not done here
 
-**Alamat vault, oracle, stability pool, surplus buffer tidak diubah.**
-Website masih menunjuk ke set kontrak lama untuk produk pinjaman. Ini disengaja:
-vault lama masih memegang 2,01 USDG sedangkan vault baru kosong. Memindahkan alamat
-sekarang akan mematikan fitur pinjam. Pemindahan itu proyek tersendiri — vault baru
-harus diisi dulu dan market-nya diperiksa.
+**Vault, oracle, stability pool, and surplus buffer addresses are not changed.**
+The website still points at the old contract set for the lending product. That
+is intentional: the old vault still holds 2.01 USDG while the new vault is
+empty. Moving the addresses now would turn lending off. That move is a separate
+project — the new vault must be funded first and its market checked.
 
-**Yang masih kurang di kontrak.** Tiga hal berikut butuh **proxy baru**, bukan sekadar
-upgrade, karena mengubah tata letak penyimpanan:
+**What is still missing in the contract.** The three items below need a **new
+proxy**, not just an upgrade, because they change the storage layout:
 
-- Pelindung reentrancy versi upgradeable — sekarang memakai versi biasa yang menempati
-  slot 1, jadi daftar warisan kontrak tidak boleh diubah.
-- `__gap` untuk ruang variabel tambahan di masa depan.
-- Field tambahan di dalam `PoolInfo`, misalnya pengali hadiah untuk kunci panjang.
+- The upgradeable reentrancy guard — it currently uses the plain variant that
+  occupies slot 1, so the contract inheritance list must not change.
+- `__gap` for future extra variables.
+- Extra fields inside `PoolInfo`, for example a reward multiplier for long locks.
 
-Selama total stake masih nol seperti sekarang, mengganti proxy tidak merugikan
-siapa pun. Semakin lama ditunda, semakin mahal.
+While total stake is still zero as it is today, replacing the proxy hurts
+nobody. The longer it is delayed, the more expensive it gets.
 
-**Keputusan produk yang tertunda:** lama kunci saat ini tidak memengaruhi besar hadiah
-sama sekali — pembagian murni berdasarkan jumlah token. Jadi tidak ada alasan bagi user
-memilih 90 hari daripada 1 hari. Pilihannya: kunci jadi satu nilai tetap (set min = maks
-lewat admin), atau tambah pengali hadiah — yang kedua butuh proxy baru.
+**Pending product decision:** lock duration currently has no effect on reward
+size at all — splitting is purely by token amount. So there is no reason for a
+user to pick 90 days over 1 day. The options: collapse the lock to a single
+fixed value (set min = max from admin), or add a reward multiplier — the
+second needs a new proxy.

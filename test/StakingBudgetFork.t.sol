@@ -73,7 +73,7 @@ contract StakingBudgetForkTest is Test {
         forked = true;
 
         bool perMinute = keccak256(bytes(vm.envOr("UNIT", string("day")))) == keccak256("minute");
-        unitName = perMinute ? "menit" : "hari";
+        unitName = perMinute ? "minute" : "day";
         unitSeconds = perMinute ? 60 : 1 days;
     }
 
@@ -86,7 +86,7 @@ contract StakingBudgetForkTest is Test {
 
         uint256 periods = vm.envOr("PERIODS", uint256(30));
         Campaign memory c = Campaign({
-            label: "kampanye tunggal",
+            label: "single campaign",
             budget: vm.envOr("BUDGET", uint256(967)),
             periods: periods,
             minLockUnits: vm.envOr("MIN_LOCK", uint256(1)),
@@ -117,16 +117,16 @@ contract StakingBudgetForkTest is Test {
         }
         // The table is denominated in days regardless of UNIT; a minute-scale APR is meaningless.
         unitSeconds = 1 days;
-        unitName = "hari";
+        unitName = "day";
 
         Campaign[7] memory cases = [
-            _c("A. 967 PLG yang ada -> 7 hari", 967, 7, 10_000, 10_000),
-            _c("B. 967 PLG yang ada -> 30 hari", 967, 30, 10_000, 10_000),
-            _c("C. 967 PLG yang ada -> 90 hari", 967, 90, 10_000, 10_000),
-            _c("D. tambah jadi 42.778 -> 7 hari", 42_778, 7, 10_000, 10_000),
-            _c("E. tambah jadi 183.333 -> 30 hari", 183_333, 30, 10_000, 10_000),
-            _c("F. tambah jadi 550.000 -> 90 hari", 550_000, 90, 10_000, 10_000),
-            _c("G. 550.000 -> 90 hari, tapi TVL 10x", 550_000, 90, 100_000, 100_000)
+            _c("A. existing 967 PLG -> 7 days", 967, 7, 10_000, 10_000),
+            _c("B. existing 967 PLG -> 30 days", 967, 30, 10_000, 10_000),
+            _c("C. existing 967 PLG -> 90 days", 967, 90, 10_000, 10_000),
+            _c("D. top up to 42,778 -> 7 days", 42_778, 7, 10_000, 10_000),
+            _c("E. top up to 183,333 -> 30 days", 183_333, 30, 10_000, 10_000),
+            _c("F. top up to 550,000 -> 90 days", 550_000, 90, 10_000, 10_000),
+            _c("G. 550,000 -> 90 days, but 10x TVL", 550_000, 90, 100_000, 100_000)
         ];
 
         for (uint256 i = 0; i < cases.length; i++) {
@@ -165,15 +165,15 @@ contract StakingBudgetForkTest is Test {
         // Rewards are not locked, only principal. Claiming mid-lock has to keep working, or
         // there is no reason for anyone to pick the long lock in the first place.
         uint256 owed = STAKING.pendingReward(POOL, budi);
-        assertGt(owed, 0, "tidak ada bunga yang terkumpul selama terkunci");
+        assertGt(owed, 0, "no rewards accrued while locked");
         vm.prank(budi);
         STAKING.claim(POOL);
-        assertEq(PLG.balanceOf(budi), owed, "klaim selama terkunci tidak terbayar");
+        assertEq(PLG.balanceOf(budi), owed, "claim while locked was not paid");
 
         vm.warp(block.timestamp + 1 days + 1);
         vm.prank(budi);
         STAKING.unstake(POOL, 10_000 * ONE);
-        assertGe(PLG.balanceOf(budi), 10_000 * ONE, "titipan pokok tidak kembali utuh");
+        assertGe(PLG.balanceOf(budi), 10_000 * ONE, "principal not returned in full");
     }
 
     /// Pausing must stop the meter without trapping anyone who is already unlocked.
@@ -187,18 +187,18 @@ contract StakingBudgetForkTest is Test {
 
         vm.warp(block.timestamp + 2 days);
         uint256 owedAtPause = STAKING.pendingReward(POOL, ani);
-        assertGt(owedAtPause, 0, "tidak ada bunga sebelum dijeda");
+        assertGt(owedAtPause, 0, "no rewards before pause");
 
         vm.prank(OWNER);
         STAKING.setPoolActive(POOL, false);
 
         vm.warp(block.timestamp + 10 days);
-        assertEq(STAKING.pendingReward(POOL, ani), owedAtPause, "bunga masih jalan padahal pool dijeda");
+        assertEq(STAKING.pendingReward(POOL, ani), owedAtPause, "rewards still accruing after pause");
 
         // The lock has expired, so a pause must not stand between a staker and their money.
         vm.prank(ani);
         STAKING.unstake(POOL, 10_000 * ONE);
-        assertEq(PLG.balanceOf(ani), 10_000 * ONE + owedAtPause, "tidak bisa keluar saat pool dijeda");
+        assertEq(PLG.balanceOf(ani), 10_000 * ONE + owedAtPause, "cannot exit while pool is paused");
     }
 
     /**
@@ -216,13 +216,13 @@ contract StakingBudgetForkTest is Test {
 
         vm.warp(block.timestamp + 10 days);
         uint256 earnedSoFar = STAKING.pendingReward(POOL, budi);
-        assertGt(earnedSoFar, 0, "sepuluh hari tanpa bunga");
+        assertGt(earnedSoFar, 0, "ten days with no rewards");
 
         // The half that is protected: what has already accrued has left the reserve, so claiming
         // it is unaffected by anything the owner does next.
         vm.prank(budi);
         STAKING.claim(POOL);
-        assertEq(PLG.balanceOf(budi), earnedSoFar, "bunga yang sudah didapat tidak terbayar penuh");
+        assertEq(PLG.balanceOf(budi), earnedSoFar, "already-earned rewards not paid in full");
 
         (,,,,,,,,, uint256 reserve) = STAKING.pools(POOL);
         vm.prank(OWNER);
@@ -230,16 +230,16 @@ contract StakingBudgetForkTest is Test {
 
         // The half that is not: every future reward is gone in one owner transaction.
         vm.warp(block.timestamp + 50 days);
-        assertEq(STAKING.pendingReward(POOL, budi), 0, "masih ada emisi padahal kantong sudah dikosongkan");
+        assertEq(STAKING.pendingReward(POOL, budi), 0, "emissions remain after reserve emptied");
 
         // And the staker cannot respond. Thirty days still to run on a pool that now pays nothing.
         vm.prank(budi);
         vm.expectRevert(PledgeStaking.LockActive.selector);
         STAKING.unstake(POOL, 10_000 * ONE);
 
-        emit log("H-2 terbukti: pemilik bisa menghentikan seluruh bunga, penitip tidak bisa keluar");
-        emit log_named_decimal_uint("  bunga yang selamat (PLG)", earnedSoFar, 18);
-        emit log_named_decimal_uint("  anggaran yang ditarik pemilik (PLG)", reserve, 18);
+        emit log("H-2 confirmed: owner can stop all rewards while stakers cannot exit");
+        emit log_named_decimal_uint("  rewards that survived (PLG)", earnedSoFar, 18);
+        emit log_named_decimal_uint("  budget withdrawn by owner (PLG)", reserve, 18);
     }
 
     /// Shared owner-side opening used by the behavioural tests, which do not vary the budget.
@@ -303,7 +303,7 @@ contract StakingBudgetForkTest is Test {
         uint256 mid = STAKING.pendingReward(POOL, budi);
         vm.prank(budi);
         STAKING.claim(POOL);
-        assertEq(PLG.balanceOf(budi), mid, "klaim tengah jalan tidak sesuai pendingReward");
+        assertEq(PLG.balanceOf(budi), mid, "mid-campaign claim does not match pendingReward");
 
         vm.warp(start + campaign);
 
@@ -333,21 +333,21 @@ contract StakingBudgetForkTest is Test {
         uint256 campaign = c.periods * 1 days;
 
         // The whole claim of this harness: the pool pays out its budget and stops, never more.
-        assertLe(o.paid, budget, "membayar lebih dari anggaran");
+        assertLe(o.paid, budget, "paid more than the budget");
 
         // Two separate roundings, worth keeping apart. The reserve keeps whatever `budget /
         // campaign` truncated -- at most one wei per second, and provably so. Anything bigger
         // means the emission stalled and stakers were quietly short-changed.
-        assertLe(o.reserveLeft, campaign, "kantong tidak habis terpakai - emisi tersendat");
+        assertLe(o.reserveLeft, campaign, "reserve not fully spent - emissions stalled");
 
         // The rest is per-share rounding in accRewardPerShare, which strands a few wei in the
         // contract forever. It scales with staker count, not with time or budget, so the only
         // sane bound is a relative one. 0.0001% is still thousands of times looser than observed.
-        assertApproxEqRel(o.paid, budget, 0.000001e18, "terlalu banyak yang tersangkut di pembulatan");
+        assertApproxEqRel(o.paid, budget, 0.000001e18, "too much stranded in rounding");
 
         // Equal principal, so the split is the boost and nothing else.
         if (c.stakeLong == c.stakeShort) {
-            assertApproxEqRel(o.longEarned * BPS, o.shortEarned * 3 * BPS, 0.001e18, "pembagian boost meleset");
+            assertApproxEqRel(o.longEarned * BPS, o.shortEarned * 3 * BPS, 0.001e18, "boost split is off");
         }
     }
 
@@ -362,14 +362,14 @@ contract StakingBudgetForkTest is Test {
     function _emit(Campaign memory c, Outcome memory o) internal {
         emit log("");
         emit log(c.label);
-        emit log_named_uint(string.concat("  lama kampanye     (", unitName, ")"), c.periods);
-        emit log_named_decimal_uint(string.concat("  dibayar per ", unitName, "  (PLG)"), o.perUnit, 18);
+        emit log_named_uint(string.concat("  campaign length    (", unitName, ")"), c.periods);
+        emit log_named_decimal_uint(string.concat("  paid per ", unitName, "       (PLG)"), o.perUnit, 18);
         emit log_named_uint("  rewardRatePerSecond (wei)", o.ratePerSecond);
-        emit log_named_decimal_uint("  titipan tiap orang (PLG)", c.stakeLong * ONE, 18);
-        emit log_named_decimal_uint("  Budi kunci panjang (PLG)", o.longEarned, 18);
-        emit log_named_decimal_uint("  Ani  kunci pendek  (PLG)", o.shortEarned, 18);
+        emit log_named_decimal_uint("  stake per person   (PLG)", c.stakeLong * ONE, 18);
+        emit log_named_decimal_uint("  Budi long lock     (PLG)", o.longEarned, 18);
+        emit log_named_decimal_uint("  Ani short lock     (PLG)", o.shortEarned, 18);
         emit log_named_decimal_uint("  APR Budi              (%)", o.longAprBps, 2);
         emit log_named_decimal_uint("  APR Ani               (%)", o.shortAprBps, 2);
-        emit log_named_decimal_uint("  sisa di kantong    (PLG)", o.reserveLeft, 18);
+        emit log_named_decimal_uint("  reserve left       (PLG)", o.reserveLeft, 18);
     }
 }
