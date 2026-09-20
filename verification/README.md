@@ -1,6 +1,6 @@
 # Blockscout verification — Robinhood Mainnet 4663
 
-All ten protocol contracts (five implementations + five branded proxies) are an **exact match** on [Sourcify](https://sourcify.dev) and are fully verified on Blockscout.
+All eleven protocol contracts (five implementations + five branded proxies + `PledgeReferralClaim`) are an **exact match** on [Sourcify](https://sourcify.dev). The ten proxies/implementations are fully verified on Blockscout; `PledgeReferralClaim` is Sourcify exact-match and needs the Blockscout Standard JSON upload below if the explorer page is still unverified.
 
 Explorer: https://robinhoodchain.blockscout.com
 
@@ -50,6 +50,7 @@ All ten are verified. Re-run a row only if an explorer page loses its source.
 | 8 | done | `PledgeFinanceSurplusBuffer` | `03-surplus-proxy.json` |
 | 9 | done | `PledgeFinanceStabilityPool` | `04-pool-proxy.json` |
 | 10 | done | `PledgeFinanceStaking` | `05-staking-proxy.json` |
+| 11 | sourcify exact_match | `PledgeReferralClaim` | `11-referral-claim.json` |
 
 **Contract name must match exactly.** Each proxy JSON (`01`–`05`) contains all five named proxies. Submitting `PledgeFinanceVault` against the oracle address will fail bytecode matching.
 
@@ -66,6 +67,7 @@ Pages:
 8. `PledgeFinanceSurplusBuffer` — https://robinhoodchain.blockscout.com/address/0xc6D477491ACE30fa5651ac61C735C2B636B095c4/contract-verification
 9. `PledgeFinanceStabilityPool` — https://robinhoodchain.blockscout.com/address/0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D/contract-verification
 10. `PledgeFinanceStaking` — https://robinhoodchain.blockscout.com/address/0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07/contract-verification
+11. `PledgeReferralClaim` — https://robinhoodchain.blockscout.com/address/0x6D33001a3c4c548a32a32a3ADC675971fC1EFFa3/contract-verification
 
 ## Constructor arguments — leave empty
 
@@ -123,3 +125,4 @@ Run this outside a sandbox; Foundry needs write access to its own cache director
 | Surplus Buffer | `0xc6D477491ACE30fa5651ac61C735C2B636B095c4` | `0x5df0d2c7aB8443f41B84e684027eEB656e303C12` |
 | Stability Pool | `0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D` | `0x3fc952F815f63dE054446D4c3C16c57d6467635D` |
 | Staking | `0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07` | `0xCa03777951f7eA15c0bA74B071D59C3c65A4e2a5` |
+| Referral Claim (direct, not a proxy) | `0x6D33001a3c4c548a32a32a3ADC675971fC1EFFa3` | n/a |

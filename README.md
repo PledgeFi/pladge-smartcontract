@@ -18,6 +18,7 @@ Production-grade overcollateralized vault protocol on **Robinhood Chain**. Users
 |---|---|
 | `PledgeVaultManager` | CDP vault — deposit collateral, borrow USDG, repay, withdraw, liquidate |
 | `PledgeSurplusBuffer` | Protocol fee treasury (USDG) |
+| `PledgeReferralClaim` | Referrer origination-fee share claim (user pays gas) |
 | `PledgeStabilityPool` | USDG parking pool (not used in liquidation) |
 | `PledgeChainlinkOracle` | Chainlink-backed price oracle (USD, 18 decimals) |
 | `VaultMath` | Health factor, collateral valuation, interest accrual |
@@ -34,6 +35,7 @@ Canonical addresses are recorded in [`deployments/4663.json`](./deployments/4663
 | `PledgeChainlinkOracle` | `0x195287cbcd53eF058a3DeC4c6DC8f17Bf79A28d9` |
 | `PledgeSurplusBuffer` | `0xEa30446c46D61514f19c897224E65b13Fb0A826c` |
 | `PledgeStabilityPool` | `0x8570a571CC83f87B3Ca4249B71646Cc807350e14` |
+| `PledgeReferralClaim` | `0x6D33001a3c4c548a32a32a3ADC675971fC1EFFa3` |
 | Paxos USDG | `0x5fc5360D0400a0Fd4f2af552ADD042D716F1d168` |
 
 > Treat on-chain state as authoritative. The manifest is a convenience reference for integrators.

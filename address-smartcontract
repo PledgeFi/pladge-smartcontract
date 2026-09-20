@@ -14,6 +14,11 @@ PledgeFinanceSurplusBuffer  (proxy)  0xc6D477491ACE30fa5651ac61C735C2B636B095c4
 PledgeFinanceStabilityPool  (proxy)  0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D
 PledgeFinanceStaking        (proxy)  0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07
 
+# Direct deploy 2026-09-20 (not a proxy). User pays gas; backend signs EIP-712.
+# Signer/owner = deployer 0x82FB…. Funded from live-app surplus 0x0fe8….
+PledgeReferralClaim                  0x6D33001a3c4c548a32a32a3ADC675971fC1EFFa3
+# Deploy tx 0x8954d3796bf9193c747f2499f3008306fbc3c1de5956e0a6b9a4c6695ad8ad34
+
 ## Proxied contracts (ERC1967)
 
 PledgeChainlinkOracle

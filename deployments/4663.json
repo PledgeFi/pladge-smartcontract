@@ -14,7 +14,7 @@
   },
   "verification": {
     "verifier": "sourcify",
-    "status": "exact_match for all implementations and proxies",
+    "status": "exact_match for all implementations, proxies, and PledgeReferralClaim",
     "reason": "Blockscout's API on this chain sits behind Cloudflare and rejects automated requests, so forge verify-contract cannot reach it. Import into Blockscout from a browser via Verify & Publish -> Sourcify."
   },
   "owner": {
@@ -33,6 +33,7 @@
     "PledgeFinanceVault": "0x83B6F15BD3A7385C0F55BA3C685f688511279B00",
     "PledgeFinanceOracle": "0xB11951Dba2A7cAF846e0A3484237d8E5844428b7",
     "PledgeFinanceSurplusBuffer": "0xc6D477491ACE30fa5651ac61C735C2B636B095c4",
+    "PledgeReferralClaim": "0x6D33001a3c4c548a32a32a3ADC675971fC1EFFa3",
     "PledgeFinanceStabilityPool": "0xf70D2a727E72b6890Bd269f5f8AdE7c86F3D244D",
     "PledgeFinanceStaking": "0xEe8c2E6ED39B79Cd6806926d96CD570F5b94bF07",
     "PLG": "0x1BE3010124C86e8a03c6Fb6e91c534D4A2b1fFCf",
