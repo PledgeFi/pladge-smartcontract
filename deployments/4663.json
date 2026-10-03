@@ -20,7 +20,7 @@
   "owner": {
     "current": "0x82FBf39835a885C1CdA3D756FB6AA79802f29e92",
     "type": "deployer EOA",
-    "plannedHandover": "TimelockController 0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD, pending",
+    "plannedHandover": "Pending. Run script/mainnet/16_DeploySafeAndTimelock.s.sol, then 11_TransferOwnershipToTimelock.s.sol. Signers (threshold 2): 0x229CA6EFbC034bBd0a2c5D4a2a3369A07eD2D829, 0xBB445d38EE937A88AC87b7c58f16F085dB721A93, 0xDAe2D6D7d1b58899a8E9aB9834b9de38a21877Ca. The retired timelock 0x1195e53E30A7645edf1EE7171B5C1CC0e55ebbFD is locked to Safe 0x509dC4A81045F6FA42D388A68e2C65d20d493560 and must not be used. Safe and Timelock addresses are recorded here only after broadcast.",
     "timelockMinDelaySeconds": 172800
   },
   "chainlink": {

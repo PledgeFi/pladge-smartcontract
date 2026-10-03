@@ -3,48 +3,35 @@ pragma solidity ^0.8.24;
 
 import {Script, console2} from "forge-std/Script.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
+import {PledgeSafe} from "./PledgeSafe.sol";
 
 /// @title DeployTimelock
-/// @notice Deploys an OpenZeppelin `TimelockController` governed by the Pledge Finance Safe.
-/// @dev The Safe is the sole proposer/canceller/executor. `admin = address(0)` so the timelock
-///      is fully self-administered afterwards (role changes must go through the timelock itself).
+/// @notice Deploys a 48h Timelock whose sole proposer, canceller, and executor is the Pledge 2-of-3 Safe.
+/// @dev Prefer `script/mainnet/16_DeploySafeAndTimelock.s.sol` for the first deploy: it creates the Safe
+///      and the Timelock together. This script is for the case where `PLEDGE_SAFE` is already live.
 ///
-///      IMPORTANT: verify the Safe address and its signer threshold on Safe UI
-///      (Settings -> Owners) BEFORE broadcasting. A wrong address here would hand
-///      admin control of the oracle/vault to an unrecoverable address.
-contract DeployTimelock is Script {
-    /// @dev Pledge Finance Safe on Robinhood Mainnet (chain 4663).
-    ///      Override with `PLEDGE_SAFE` env var if deploying for a different chain/environment.
-    address internal constant DEFAULT_SAFE = 0x509dC4A81045F6FA42D388A68e2C65d20d493560;
-
-    /// @dev Default 48h delay between `schedule()` and `execute()`.
-    uint256 internal constant DEFAULT_MIN_DELAY = 48 hours;
-
+///      `admin = address(0)`, so role changes afterwards can only be scheduled by the Safe and executed
+///      by the timelock itself. The retired Safe `0x509d…` is rejected.
+contract DeployTimelock is Script, PledgeSafe {
     function run() external returns (TimelockController timelock) {
         uint256 deployerKey = _deployerPrivateKey();
         address deployer = vm.addr(deployerKey);
-
-        address safe = vm.envOr("PLEDGE_SAFE", DEFAULT_SAFE);
-        uint256 minDelay = vm.envOr("TIMELOCK_MIN_DELAY_SECONDS", DEFAULT_MIN_DELAY);
-
-        address[] memory proposers = new address[](1);
-        proposers[0] = safe;
-        address[] memory executors = new address[](1);
-        executors[0] = safe;
+        address safe = vm.envAddress("PLEDGE_SAFE");
+        assertPledgeSafe(safe);
 
         console2.log("Deployer:", deployer);
         console2.log("Safe (proposer/canceller/executor):", safe);
-        console2.log("Min delay (seconds):", minDelay);
+        console2.log("Min delay (seconds):", TIMELOCK_MIN_DELAY);
 
         vm.startBroadcast(deployerKey);
-        // admin = address(0): no one but the timelock itself (via schedule+execute) can
-        // grant/revoke PROPOSER_ROLE/EXECUTOR_ROLE/CANCELLER_ROLE afterwards.
-        timelock = new TimelockController(minDelay, proposers, executors, address(0));
+        timelock = deployTimelock(safe);
         vm.stopBroadcast();
 
+        assertPledgeTimelock(address(timelock), safe, deployer);
+
         console2.log("TimelockController deployed at:", address(timelock));
-        console2.log("Next: run TransferOwnershipToTimelock.s.sol, then have the Safe");
-        console2.log("schedule()+execute() an `acceptOwnership()` call on each target contract.");
+        console2.log("Next: simulate 11_TransferOwnershipToTimelock.s.sol without --broadcast.");
+        console2.log("Ownership transfer is single-step. There is no acceptOwnership.");
     }
 
     function _deployerPrivateKey() private view returns (uint256) {
